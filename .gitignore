@@ -9,7 +9,10 @@
 .codex/
 .omx/
 AGENTS.md
-
+.idea/
+.github/skills/
+.github/agents/
+.github/instructions/
 
 # Flutter repo-specific
 /bin/cache/
