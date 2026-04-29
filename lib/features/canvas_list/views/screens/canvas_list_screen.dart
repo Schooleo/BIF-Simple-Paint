@@ -1,3 +1,4 @@
+import 'package:bif_simple_paint/core/routing/app_router.dart';
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
 import 'package:bif_simple_paint/core/theme/app_colors_dark.dart';
 import 'package:flutter/material.dart';
@@ -34,20 +35,35 @@ class CanvasListScreen extends StatelessWidget {
               const SizedBox(height: 16),
               Expanded(
                 child: ListView(
-                  children: const <Widget>[
+                  children: <Widget>[
                     _FileCard(
                       fileName: 'Diagram_01.bif',
                       updatedLabel: 'Edited 2 hrs ago',
+                      onTap: () {
+                        Navigator.of(
+                          context,
+                        ).pushNamed(AppRouter.drawingBoardPath);
+                      },
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     _FileCard(
                       fileName: 'App_Wireframe.bif',
                       updatedLabel: 'Edited yesterday',
+                      onTap: () {
+                        Navigator.of(
+                          context,
+                        ).pushNamed(AppRouter.drawingBoardPath);
+                      },
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     _FileCard(
                       fileName: 'Untitled_Artwork.bif',
                       updatedLabel: 'Edited last week',
+                      onTap: () {
+                        Navigator.of(
+                          context,
+                        ).pushNamed(AppRouter.drawingBoardPath);
+                      },
                     ),
                   ],
                 ),
@@ -105,10 +121,15 @@ class _CanvasSearchField extends StatelessWidget {
 }
 
 class _FileCard extends StatelessWidget {
-  const _FileCard({required this.fileName, required this.updatedLabel});
+  const _FileCard({
+    required this.fileName,
+    required this.updatedLabel,
+    required this.onTap,
+  });
 
   final String fileName;
   final String updatedLabel;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -122,30 +143,37 @@ class _FileCard extends StatelessWidget {
         ? AppColorsDark.textMuted
         : AppColors.textMuted;
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: background,
-        border: Border.all(color: border),
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            fileName,
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(color: titleColor),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            border: Border.all(color: border),
+            borderRadius: BorderRadius.circular(12),
           ),
-          const SizedBox(height: 8),
-          Text(
-            updatedLabel,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: subtitleColor),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                fileName,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(color: titleColor),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                updatedLabel,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: subtitleColor),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
