@@ -35,7 +35,7 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
       return;
     }
 
-    state = state.commit(activeTempShape);
+    state = state.commit(activeTempShape.finalize());
   }
 
   BaseShape _shapeFromTool({
