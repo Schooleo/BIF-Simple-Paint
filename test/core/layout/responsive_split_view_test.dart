@@ -1,6 +1,4 @@
 import 'package:bif_simple_paint/core/layout/responsive_split_view.dart';
-import 'package:bif_simple_paint/features/canvas_list/views/screens/canvas_list_screen.dart';
-import 'package:bif_simple_paint/features/drawing_board/views/screens/drawing_board_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('ResponsiveSplitView returns child on mobile widths', (
+  testWidgets('ResponsiveSplitView returns mobile on small widths', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(375, 812);
@@ -17,22 +15,19 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(
-          home: ResponsiveSplitView(
-            child: Scaffold(body: Center(child: Text('MobileChild'))),
-          ),
+      const MaterialApp(
+        home: ResponsiveSplitView(
+          mobile: Scaffold(body: Center(child: Text('MobileChild'))),
+          desktop: Scaffold(body: Center(child: Text('DesktopChild'))),
         ),
       ),
     );
 
     expect(find.text('MobileChild'), findsOneWidget);
-    expect(find.byType(Row), findsNothing);
-    expect(find.byType(CanvasListScreen), findsNothing);
-    expect(find.byType(DrawingBoardScreen), findsNothing);
+    expect(find.text('DesktopChild'), findsNothing);
   });
 
-  testWidgets('ResponsiveSplitView returns split layout on desktop widths', (
+  testWidgets('ResponsiveSplitView returns desktop on large widths', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1440, 900);
@@ -41,23 +36,15 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(
-          home: ResponsiveSplitView(child: SizedBox.shrink()),
+      const MaterialApp(
+        home: ResponsiveSplitView(
+          mobile: SizedBox.shrink(),
+          desktop: Scaffold(body: Center(child: Text('DesktopChild'))),
         ),
       ),
     );
 
-    expect(find.byType(Row), findsOneWidget);
-    expect(find.byType(CanvasListScreen), findsOneWidget);
-    expect(find.byType(DrawingBoardScreen), findsOneWidget);
-
-    final row = tester.widget<Row>(find.byType(Row));
-    final flexValues = row.children
-        .whereType<Expanded>()
-        .map((Expanded widget) => widget.flex)
-        .toList();
-
-    expect(flexValues, <int>[1, 3]);
+    expect(find.text('DesktopChild'), findsOneWidget);
+    expect(find.text('MobileChild'), findsNothing);
   });
 }
