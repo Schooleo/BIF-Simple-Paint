@@ -2,6 +2,7 @@ import 'package:bif_simple_paint/core/layout/responsive_split_view.dart';
 import 'package:bif_simple_paint/features/canvas_list/views/screens/canvas_list_screen.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/screens/drawing_board_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -16,9 +17,11 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(
-      const MaterialApp(
-        home: ResponsiveSplitView(
-          child: Scaffold(body: Center(child: Text('MobileChild'))),
+      const ProviderScope(
+        child: MaterialApp(
+          home: ResponsiveSplitView(
+            child: Scaffold(body: Center(child: Text('MobileChild'))),
+          ),
         ),
       ),
     );
@@ -38,7 +41,11 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(
-      const MaterialApp(home: ResponsiveSplitView(child: SizedBox.shrink())),
+      const ProviderScope(
+        child: MaterialApp(
+          home: ResponsiveSplitView(child: SizedBox.shrink()),
+        ),
+      ),
     );
 
     expect(find.byType(Row), findsOneWidget);
