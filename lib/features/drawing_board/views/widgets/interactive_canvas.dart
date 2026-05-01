@@ -10,22 +10,21 @@ class InteractiveCanvas extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final drawingState = ref.watch(drawingBoardNotifierProvider);
+    final drawingBoardNotifier = ref.read(
+      drawingBoardNotifierProvider.notifier,
+    );
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onPanStart: (details) {
-        final currentTool = ref.read(toolSelectionNotifierProvider).toolType;
-        ref
-            .read(drawingBoardNotifierProvider.notifier)
-            .startDrawing(details.localPosition, currentTool);
+        final toolSelection = ref.read(toolSelectionNotifierProvider);
+        drawingBoardNotifier.startDrawing(details.localPosition, toolSelection);
       },
       onPanUpdate: (details) {
-        ref
-            .read(drawingBoardNotifierProvider.notifier)
-            .updateDrawing(details.localPosition);
+        drawingBoardNotifier.updateDrawing(details.localPosition);
       },
       onPanEnd: (_) {
-        ref.read(drawingBoardNotifierProvider.notifier).commitDrawing();
+        drawingBoardNotifier.commitDrawing();
       },
       child: CustomPaint(
         painter: CanvasPainter(state: drawingState),
@@ -58,34 +57,21 @@ class CanvasPainter extends CustomPainter {
   }
 
   void _drawShape(Canvas canvas, BaseShape shape) {
-    if (shape is PathShape) {
-      _drawPathShape(canvas, shape);
-      return;
-    }
-
-    if (shape is LineShape) {
-      _drawLineShape(canvas, shape);
-      return;
-    }
-
-    if (shape is RectangleShape) {
-      _drawRectShape(canvas, shape);
-      return;
-    }
-
-    if (shape is OvalShape) {
-      _drawOvalShape(canvas, shape);
-      return;
-    }
-
-    if (shape is CircleShape) {
-      _drawCircleShape(canvas, shape);
-      return;
-    }
-
-    if (shape is SquareShape) {
-      _drawSquareShape(canvas, shape);
-      return;
+    switch (shape) {
+      case PathShape():
+        _drawPathShape(canvas, shape);
+      case LineShape():
+        _drawLineShape(canvas, shape);
+      case RectangleShape():
+        _drawRectShape(canvas, shape);
+      case OvalShape():
+        _drawOvalShape(canvas, shape);
+      case CircleShape():
+        _drawCircleShape(canvas, shape);
+      case SquareShape():
+        _drawSquareShape(canvas, shape);
+      case _:
+        return;
     }
   }
 
@@ -156,7 +142,7 @@ class CanvasPainter extends CustomPainter {
     void Function(Rect, Paint) draw,
   ) {
     final fillColor = shape.fillColor;
-    
+
     if (fillColor == null || fillColor.a == 0) {
       return;
     }

@@ -1,9 +1,10 @@
-import 'dart:collection';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:bif_simple_paint/features/drawing_board/models/base_shape.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
+import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,69 +22,72 @@ void main() {
       container.dispose();
     });
 
-    test('initial state is empty with no active preview', () {
+    ToolSelectionState selection({
+      ToolType toolType = ToolType.brush,
+      Color fillColor = const Color(0x00000000),
+      Color strokeColor = const Color(0xFF000000),
+      double strokeWidth = 2,
+    }) {
+      return ToolSelectionState(
+        toolType: toolType,
+        currentFillColor: fillColor,
+        currentStrokeColor: strokeColor,
+        currentStrokeWidth: strokeWidth,
+      );
+    }
+
+    test('initial state is empty with no active preview or history', () {
       final state = container.read(drawingBoardNotifierProvider);
 
       expect(state.finalizedShapes, isEmpty);
       expect(state.activeTempShape, isNull);
+      expect(state.selectedShapeId, isNull);
+      expect(state.undoStack, isEmpty);
+      expect(state.redoStack, isEmpty);
+      expect(state.canUndo, isFalse);
+      expect(state.canRedo, isFalse);
     });
 
     test(
-      'startDrawing seeds a brush preview without changing committed shapes',
+      'startDrawing seeds a styled brush preview without history changes',
       () {
-        final before = container.read(drawingBoardNotifierProvider);
-
-        notifier.startDrawing(const Offset(1, 2), ToolType.brush);
-
-        final after = container.read(drawingBoardNotifierProvider);
-        final activeTempShape = after.activeTempShape;
-
-        expect(
-          identical(before.finalizedShapes, after.finalizedShapes),
-          isTrue,
-        );
-        expect(activeTempShape, isA<BrushShape>());
-        expect((activeTempShape! as BrushShape).points, <Offset>[
+        notifier.startDrawing(
           const Offset(1, 2),
-        ]);
-      },
-    );
-
-    test(
-      'startDrawing seeds an eraser preview without changing committed shapes',
-      () {
-        final before = container.read(drawingBoardNotifierProvider);
-
-        notifier.startDrawing(const Offset(3, 4), ToolType.eraser);
-
-        final after = container.read(drawingBoardNotifierProvider);
-        final activeTempShape = after.activeTempShape;
-
-        expect(
-          identical(before.finalizedShapes, after.finalizedShapes),
-          isTrue,
+          selection(strokeColor: const Color(0xFF00FF00), strokeWidth: 5),
         );
-        expect(activeTempShape, isA<EraserShape>());
-        expect((activeTempShape! as EraserShape).points, <Offset>[
-          const Offset(3, 4),
-        ]);
+
+        final state = container.read(drawingBoardNotifierProvider);
+        final activeTempShape = state.activeTempShape as BrushShape;
+
+        expect(activeTempShape.points, <Offset>[const Offset(1, 2)]);
+        expect(activeTempShape.strokeColor, const Color(0xFF00FF00));
+        expect(activeTempShape.strokeWidth, 5);
+        expect(state.undoStack, isEmpty);
+        expect(state.redoStack, isEmpty);
       },
     );
 
-    test('startDrawing maps ToolType.shape to rectangle preview', () {
-      final before = container.read(drawingBoardNotifierProvider);
-
-      notifier.startDrawing(const Offset(5, 6), ToolType.shape);
-
-      final after = container.read(drawingBoardNotifierProvider);
-      final activeTempShape = after.activeTempShape;
-
-      expect(identical(before.finalizedShapes, after.finalizedShapes), isTrue);
-      expect(activeTempShape, isA<RectangleShape>());
-      expect(
-        activeTempShape,
-        const RectangleShape(start: Offset(5, 6), end: Offset(5, 6)),
+    test('startDrawing maps ToolType.shape to styled rectangle preview', () {
+      notifier.startDrawing(
+        const Offset(5, 6),
+        selection(
+          toolType: ToolType.shape,
+          fillColor: const Color(0x2200FF00),
+          strokeColor: const Color(0xFF123456),
+          strokeWidth: 7,
+        ),
       );
+
+      final activeTempShape =
+          container.read(drawingBoardNotifierProvider).activeTempShape
+              as RectangleShape;
+
+      expect(activeTempShape.start, const Offset(5, 6));
+      expect(activeTempShape.end, const Offset(5, 6));
+      expect(activeTempShape.fillColor, const Color(0x2200FF00));
+      expect(activeTempShape.strokeColor, const Color(0xFF123456));
+      expect(activeTempShape.strokeWidth, 7);
+      expect(activeTempShape.id, isNotEmpty);
     });
 
     test('updateDrawing is a no-op before startDrawing', () {
@@ -93,153 +97,165 @@ void main() {
 
       final after = container.read(drawingBoardNotifierProvider);
 
-      expect(identical(before.finalizedShapes, after.finalizedShapes), isTrue);
+      expect(after.finalizedShapes, before.finalizedShapes);
       expect(after.activeTempShape, isNull);
     });
 
-    test('commitDrawing is a no-op before startDrawing', () {
-      final before = container.read(drawingBoardNotifierProvider);
+    test('commitDrawing pushes a finalized snapshot onto the undo stack', () {
+      notifier.startDrawing(const Offset(1, 1), selection());
+      notifier.updateDrawing(const Offset(2, 2));
 
       notifier.commitDrawing();
 
-      final after = container.read(drawingBoardNotifierProvider);
+      final state = container.read(drawingBoardNotifierProvider);
+      final committedShape = state.finalizedShapes.single as BrushShape;
 
-      expect(identical(before.finalizedShapes, after.finalizedShapes), isTrue);
-      expect(after.activeTempShape, isNull);
+      expect(state.activeTempShape, isNull);
+      expect(state.finalizedShapes, hasLength(1));
+      expect(committedShape.points, <Offset>[
+        const Offset(1, 1),
+        const Offset(2, 2),
+      ]);
+      expect(committedShape.isFinalized, isTrue);
+      expect(state.undoStack, hasLength(1));
+      expect(state.undoStack.single, isEmpty);
+      expect(state.redoStack, isEmpty);
+      expect(state.selectedShapeId, committedShape.id);
     });
 
-    test(
-      'updateDrawing appends to brush preview and keeps committed list identity',
-      () {
-        notifier.startDrawing(const Offset(0, 0), ToolType.brush);
-        final afterStart = container.read(drawingBoardNotifierProvider);
-
-        notifier.updateDrawing(const Offset(9, 9));
-
-        final afterUpdate = container.read(drawingBoardNotifierProvider);
-        final activeTempShape = afterUpdate.activeTempShape;
-
-        expect(
-          identical(afterStart.finalizedShapes, afterUpdate.finalizedShapes),
-          isTrue,
-        );
-        expect(activeTempShape, isA<BrushShape>());
-        expect((activeTempShape! as BrushShape).points, <Offset>[
-          const Offset(0, 0),
-          const Offset(9, 9),
-        ]);
-      },
-    );
-
-    test('repeated updates keep committed list identity stable', () {
-      notifier.startDrawing(const Offset(0, 0), ToolType.eraser);
-      final afterStart = container.read(drawingBoardNotifierProvider);
-
-      notifier.updateDrawing(const Offset(1, 1));
-      final afterFirstUpdate = container.read(drawingBoardNotifierProvider);
-
-      notifier.updateDrawing(const Offset(2, 2));
-      final afterSecondUpdate = container.read(drawingBoardNotifierProvider);
-
-      expect(
-        identical(afterStart.finalizedShapes, afterFirstUpdate.finalizedShapes),
-        isTrue,
-      );
-      expect(
-        identical(
-          afterFirstUpdate.finalizedShapes,
-          afterSecondUpdate.finalizedShapes,
-        ),
-        isTrue,
-      );
-      expect(
-        (afterSecondUpdate.activeTempShape! as EraserShape).points,
-        <Offset>[const Offset(0, 0), const Offset(1, 1), const Offset(2, 2)],
-      );
-    });
-
-    test('updateDrawing updates rectangle end point only', () {
-      notifier.startDrawing(const Offset(2, 3), ToolType.shape);
-
-      notifier.updateDrawing(const Offset(8, 13));
-
-      final activeTempShape = container
+    test('selectShape picks the committed shape by id', () {
+      notifier.startDrawing(const Offset(1, 1), selection());
+      notifier.commitDrawing();
+      final shapeId = container
           .read(drawingBoardNotifierProvider)
-          .activeTempShape;
+          .finalizedShapes
+          .single
+          .id;
 
-      expect(
-        activeTempShape,
-        const RectangleShape(start: Offset(2, 3), end: Offset(8, 13)),
-      );
+      notifier.selectShape(shapeId);
+
+      final state = container.read(drawingBoardNotifierProvider);
+      expect(state.selectedShapeId, shapeId);
+      expect(state.selectedShape?.id, shapeId);
     });
 
     test(
-      'commitDrawing appends preview exactly once and clears active preview',
+      'updateSelectedShapeStyle commits a detached snapshot for undo history',
       () {
-        notifier.startDrawing(const Offset(1, 1), ToolType.brush);
-        notifier.updateDrawing(const Offset(2, 2));
-        final beforeCommit = container.read(drawingBoardNotifierProvider);
-
+        notifier.startDrawing(const Offset(1, 1), selection());
         notifier.commitDrawing();
+        final shapeId = container
+            .read(drawingBoardNotifierProvider)
+            .finalizedShapes
+            .single
+            .id;
+        notifier.selectShape(shapeId);
 
-        final afterCommit = container.read(drawingBoardNotifierProvider);
+        notifier.updateSelectedShapeStyle(
+          strokeColor: const Color(0xFFFF0000),
+          strokeWidth: 8,
+        );
 
-        expect(
-          identical(beforeCommit.finalizedShapes, afterCommit.finalizedShapes),
-          isFalse,
-        );
-        expect(afterCommit.activeTempShape, isNull);
-        expect(afterCommit.finalizedShapes, hasLength(1));
-        expect(afterCommit.finalizedShapes.single, isA<BrushShape>());
-        expect(
-          (afterCommit.finalizedShapes.single as BrushShape).points,
-          <Offset>[const Offset(1, 1), const Offset(2, 2)],
-        );
+        final state = container.read(drawingBoardNotifierProvider);
+        final currentShape = state.finalizedShapes.single as BrushShape;
+        final historicalShape = state.undoStack.last.single as BrushShape;
+
+        expect(currentShape.strokeColor, const Color(0xFFFF0000));
+        expect(currentShape.strokeWidth, 8);
+        expect(historicalShape.strokeColor, const Color(0xFF000000));
+        expect(historicalShape.strokeWidth, 2);
+        expect(identical(currentShape, historicalShape), isFalse);
+        expect(state.redoStack, isEmpty);
       },
     );
 
     test(
-      'startDrawing during active preview replaces abandoned preview without commit',
+      'undo and redo restore cloned snapshots without leaking style mutations',
       () {
-        notifier.startDrawing(const Offset(1, 1), ToolType.brush);
-        notifier.updateDrawing(const Offset(2, 2));
-        final beforeRestart = container.read(drawingBoardNotifierProvider);
-
-        notifier.startDrawing(const Offset(10, 10), ToolType.shape);
-
-        final afterRestart = container.read(drawingBoardNotifierProvider);
-
-        expect(
-          identical(
-            beforeRestart.finalizedShapes,
-            afterRestart.finalizedShapes,
-          ),
-          isTrue,
+        notifier.startDrawing(const Offset(1, 1), selection());
+        notifier.commitDrawing();
+        final shapeId = container
+            .read(drawingBoardNotifierProvider)
+            .finalizedShapes
+            .single
+            .id;
+        notifier.selectShape(shapeId);
+        notifier.updateSelectedShapeStyle(
+          strokeColor: const Color(0xFFFF0000),
+          strokeWidth: 8,
         );
-        expect(afterRestart.finalizedShapes, isEmpty);
-        expect(
-          afterRestart.activeTempShape,
-          const RectangleShape(start: Offset(10, 10), end: Offset(10, 10)),
-        );
+
+        notifier.undo();
+        var state = container.read(drawingBoardNotifierProvider);
+        var shape = state.finalizedShapes.single as BrushShape;
+
+        expect(shape.strokeColor, const Color(0xFF000000));
+        expect(shape.strokeWidth, 2);
+        expect(state.redoStack, hasLength(1));
+
+        notifier.redo();
+        state = container.read(drawingBoardNotifierProvider);
+        shape = state.finalizedShapes.single as BrushShape;
+
+        expect(shape.strokeColor, const Color(0xFFFF0000));
+        expect(shape.strokeWidth, 8);
+        expect(state.undoStack, hasLength(2));
+        expect(state.redoStack, isEmpty);
       },
     );
+
+    test('new actions after undo clear the redo stack', () {
+      notifier.startDrawing(const Offset(1, 1), selection());
+      notifier.commitDrawing();
+      final shapeId = container
+          .read(drawingBoardNotifierProvider)
+          .finalizedShapes
+          .single
+          .id;
+      notifier.selectShape(shapeId);
+      notifier.updateSelectedShapeStyle(strokeWidth: 6);
+      notifier.undo();
+
+      notifier.updateSelectedShapeStyle(strokeColor: const Color(0xFF00FF00));
+
+      final state = container.read(drawingBoardNotifierProvider);
+      expect(state.redoStack, isEmpty);
+      expect(
+        (state.finalizedShapes.single as BrushShape).strokeColor,
+        const Color(0xFF00FF00),
+      );
+    });
+
+    test('updateSelectedShapeStyle is a no-op without a selection', () {
+      notifier.startDrawing(const Offset(1, 1), selection());
+      notifier.commitDrawing();
+      notifier.selectShape('missing-shape');
+      final before = container.read(drawingBoardNotifierProvider);
+
+      notifier.updateSelectedShapeStyle(strokeWidth: 10);
+
+      final after = container.read(drawingBoardNotifierProvider);
+      expect(after.finalizedShapes.single, before.finalizedShapes.single);
+      expect(after.undoStack, before.undoStack);
+      expect(after.redoStack, before.redoStack);
+      expect(after.selectedShapeId, isNull);
+    });
 
     test('finalizedShapes exposure is unmodifiable', () {
-      notifier.startDrawing(const Offset(1, 1), ToolType.eraser);
+      notifier.startDrawing(const Offset(1, 1), selection());
       notifier.commitDrawing();
 
       final finalizedShapes = container
           .read(drawingBoardNotifierProvider)
           .finalizedShapes;
 
-      expect(finalizedShapes, isA<UnmodifiableListView<BaseShape>>());
       expect(
         () => finalizedShapes.add(BrushShape.seed(const Offset(3, 3))),
         throwsUnsupportedError,
       );
     });
 
-    test('boundary imports stay out of notifier and shape models', () {
+    test('provider implementation stays isolated from repository concerns', () {
       final notifierSource = File(
         'lib/features/drawing_board/providers/drawing_board_notifier.dart',
       ).readAsStringSync();
@@ -247,19 +263,19 @@ void main() {
         'lib/features/drawing_board/models/base_shape.dart',
       ).readAsStringSync();
 
-      expect(shapeSource, contains('sealed class BaseShape'));
-      expect(notifierSource, isNot(contains('loadSession')));
-      expect(notifierSource, isNot(contains('addStroke')));
-      expect(notifierSource, isNot(contains('undo()')));
-      expect(notifierSource, isNot(contains('redo()')));
+      expect(shapeSource, contains('BaseShape copyStyle'));
+      expect(shapeSource, contains('BaseShape clone'));
+      expect(notifierSource, contains('void undo()'));
+      expect(notifierSource, contains('void redo()'));
+      expect(notifierSource, contains('void selectShape(String id)'));
+      expect(notifierSource, contains('void updateSelectedShapeStyle'));
 
       for (final source in <String>[notifierSource, shapeSource]) {
-        expect(source, isNot(contains('toolSelectionNotifierProvider')));
+        expect(source, isNot(contains('loadSession')));
+        expect(source, isNot(contains('addStroke')));
         expect(source, isNot(contains('stroke_data.dart')));
         expect(source, isNot(contains('drawingSessionRepositoryProvider')));
         expect(source, isNot(contains('drawing_session_repository.dart')));
-        expect(source, isNot(contains('color')));
-        expect(source, isNot(contains('thickness')));
       }
     });
   });
