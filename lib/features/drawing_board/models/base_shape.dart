@@ -1,11 +1,16 @@
-import 'package:flutter/material.dart';
 import 'dart:collection';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
 sealed class BaseShape {
   const BaseShape({
+    this.id = '',
     this.strokeColor = _defaultStrokeColor,
     this.strokeWidth = _defaultStrokeWidth,
   });
 
+  final String id;
   final Color strokeColor;
   final double strokeWidth;
 
@@ -14,16 +19,28 @@ sealed class BaseShape {
   BaseShape extendTo(Offset point);
 
   BaseShape finalize() => this;
+
+  BaseShape clone();
+
+  BaseShape copyStyle({
+    Color? fillColor,
+    bool applyFillColor = false,
+    Color? strokeColor,
+    double? strokeWidth,
+  });
 }
 
 abstract base class PathShape extends BaseShape {
   PathShape({
     required List<Offset> points,
     this.isFinalized = false,
+    super.id,
     super.strokeColor,
     super.strokeWidth,
   }) : assert(points.isNotEmpty, 'PathShape requires at least one point.'),
-       _points = List<Offset>.of(points, growable: !isFinalized) {
+       _points = isFinalized
+           ? List<Offset>.unmodifiable(points)
+           : List<Offset>.of(points, growable: false) {
     _pointsView = UnmodifiableListView<Offset>(_points);
   }
 
@@ -33,30 +50,89 @@ abstract base class PathShape extends BaseShape {
 
   List<Offset> get points => _pointsView;
 
-  PathShape createWithPoints(List<Offset> points, {required bool isFinalized});
+  @protected
+  PathShape createWith({
+    required List<Offset> points,
+    required bool isFinalized,
+    required String id,
+    required Color strokeColor,
+    required double strokeWidth,
+  });
 
   @override
   PathShape extendTo(Offset point) {
-    if (isFinalized) {
-      final nextPoints = List<Offset>.of(_points, growable: true)..add(point);
-      return createWithPoints(nextPoints, isFinalized: false);
-    }
-
-    _points.add(point);
-    return this;
+    return createWith(
+      points: <Offset>[..._points, point],
+      isFinalized: false,
+      id: id,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
   }
 
   @override
   PathShape finalize() {
     if (isFinalized) {
-      return this;
+      return clone();
     }
 
-    return createWithPoints(
-      List<Offset>.unmodifiable(_points),
+    return createWith(
+      points: List<Offset>.of(_points),
       isFinalized: true,
+      id: id,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
     );
   }
+
+  @override
+  PathShape clone() {
+    return createWith(
+      points: List<Offset>.of(_points),
+      isFinalized: isFinalized,
+      id: id,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
+  }
+
+  @override
+  PathShape copyStyle({
+    Color? fillColor,
+    bool applyFillColor = false,
+    Color? strokeColor,
+    double? strokeWidth,
+  }) {
+    return createWith(
+      points: List<Offset>.of(_points),
+      isFinalized: isFinalized,
+      id: id,
+      strokeColor: strokeColor ?? this.strokeColor,
+      strokeWidth: strokeWidth ?? this.strokeWidth,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other.runtimeType == runtimeType &&
+            other is PathShape &&
+            other.id == id &&
+            other.isFinalized == isFinalized &&
+            listEquals(other.points, points) &&
+            other.strokeColor == strokeColor &&
+            other.strokeWidth == strokeWidth;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    runtimeType,
+    id,
+    isFinalized,
+    Object.hashAll(points),
+    strokeColor,
+    strokeWidth,
+  );
 }
 
 abstract base class TwoPointShape extends BaseShape {
@@ -64,6 +140,7 @@ abstract base class TwoPointShape extends BaseShape {
     required this.startPoint,
     required this.endPoint,
     this.fillColor = _defaultFillColor,
+    super.id,
     super.strokeColor,
     super.strokeWidth,
   });
@@ -71,35 +148,128 @@ abstract base class TwoPointShape extends BaseShape {
   final Offset startPoint;
   final Offset endPoint;
   final Color? fillColor;
+
+  @protected
+  TwoPointShape createWith({
+    required Offset startPoint,
+    required Offset endPoint,
+    required String id,
+    required Color? fillColor,
+    required Color strokeColor,
+    required double strokeWidth,
+  });
+
+  @override
+  TwoPointShape extendTo(Offset point) {
+    return createWith(
+      startPoint: startPoint,
+      endPoint: point,
+      id: id,
+      fillColor: fillColor,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
+  }
+
+  @override
+  TwoPointShape clone() {
+    return createWith(
+      startPoint: startPoint,
+      endPoint: endPoint,
+      id: id,
+      fillColor: fillColor,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
+  }
+
+  @override
+  TwoPointShape copyStyle({
+    Color? fillColor,
+    bool applyFillColor = false,
+    Color? strokeColor,
+    double? strokeWidth,
+  }) {
+    return createWith(
+      startPoint: startPoint,
+      endPoint: endPoint,
+      id: id,
+      fillColor: applyFillColor ? fillColor : this.fillColor,
+      strokeColor: strokeColor ?? this.strokeColor,
+      strokeWidth: strokeWidth ?? this.strokeWidth,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other.runtimeType == runtimeType &&
+            other is TwoPointShape &&
+            other.id == id &&
+            other.startPoint == startPoint &&
+            other.endPoint == endPoint &&
+            other.fillColor == fillColor &&
+            other.strokeColor == strokeColor &&
+            other.strokeWidth == strokeWidth;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    runtimeType,
+    id,
+    startPoint,
+    endPoint,
+    fillColor,
+    strokeColor,
+    strokeWidth,
+  );
 }
 
 final class BrushShape extends PathShape {
   BrushShape({
     required super.points,
+    super.id,
     super.isFinalized,
     super.strokeColor,
     super.strokeWidth,
   });
 
-  factory BrushShape.seed(Offset point) {
-    return BrushShape(points: <Offset>[point]);
+  factory BrushShape.seed(
+    Offset point, {
+    String id = '',
+    Color strokeColor = _defaultStrokeColor,
+    double strokeWidth = _defaultStrokeWidth,
+  }) {
+    return BrushShape(
+      points: <Offset>[point],
+      id: id,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
   }
 
   @override
-  BrushShape createWithPoints(
-    List<Offset> points, {
+  BrushShape createWith({
+    required List<Offset> points,
     required bool isFinalized,
-  }) => BrushShape(
-    points: points,
-    isFinalized: isFinalized,
-    strokeColor: strokeColor,
-    strokeWidth: strokeWidth,
-  );
+    required String id,
+    required Color strokeColor,
+    required double strokeWidth,
+  }) {
+    return BrushShape(
+      points: points,
+      id: id,
+      isFinalized: isFinalized,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
+  }
 }
 
 final class EraserShape extends PathShape {
   EraserShape({
     required super.points,
+    super.id,
     super.isFinalized,
     super.strokeColor,
     super.strokeWidth,
@@ -108,101 +278,107 @@ final class EraserShape extends PathShape {
   @override
   BlendMode get blendMode => BlendMode.clear;
 
-  factory EraserShape.seed(Offset point) {
-    return EraserShape(points: <Offset>[point]);
+  factory EraserShape.seed(
+    Offset point, {
+    String id = '',
+    Color strokeColor = _defaultStrokeColor,
+    double strokeWidth = _defaultStrokeWidth,
+  }) {
+    return EraserShape(
+      points: <Offset>[point],
+      id: id,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
   }
 
   @override
-  EraserShape createWithPoints(
-    List<Offset> points, {
+  EraserShape createWith({
+    required List<Offset> points,
     required bool isFinalized,
-  }) => EraserShape(
-    points: points,
-    isFinalized: isFinalized,
-    strokeColor: strokeColor,
-    strokeWidth: strokeWidth,
-  );
+    required String id,
+    required Color strokeColor,
+    required double strokeWidth,
+  }) {
+    return EraserShape(
+      points: points,
+      id: id,
+      isFinalized: isFinalized,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
+  }
 }
 
 final class LineShape extends TwoPointShape {
   const LineShape({
     required super.startPoint,
     required super.endPoint,
+    super.id,
     super.fillColor,
     super.strokeColor,
     super.strokeWidth,
   });
 
   @override
-  LineShape extendTo(Offset point) {
+  LineShape createWith({
+    required Offset startPoint,
+    required Offset endPoint,
+    required String id,
+    required Color? fillColor,
+    required Color strokeColor,
+    required double strokeWidth,
+  }) {
     return LineShape(
       startPoint: startPoint,
-      endPoint: point,
+      endPoint: endPoint,
+      id: id,
       fillColor: fillColor,
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
     );
   }
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is LineShape &&
-            other.startPoint == startPoint &&
-            other.endPoint == endPoint &&
-            other.fillColor == fillColor &&
-            other.strokeColor == strokeColor &&
-            other.strokeWidth == strokeWidth;
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(startPoint, endPoint, fillColor, strokeColor, strokeWidth);
 }
 
 final class RectangleShape extends TwoPointShape {
   const RectangleShape({
     required Offset start,
     required Offset end,
+    super.id,
     super.fillColor,
     super.strokeColor,
     super.strokeWidth,
   }) : super(startPoint: start, endPoint: end);
 
   Offset get start => startPoint;
+
   Offset get end => endPoint;
 
   @override
-  RectangleShape extendTo(Offset point) {
+  RectangleShape createWith({
+    required Offset startPoint,
+    required Offset endPoint,
+    required String id,
+    required Color? fillColor,
+    required Color strokeColor,
+    required double strokeWidth,
+  }) {
     return RectangleShape(
       start: startPoint,
-      end: point,
+      end: endPoint,
+      id: id,
       fillColor: fillColor,
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
     );
   }
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is RectangleShape &&
-            other.startPoint == startPoint &&
-            other.endPoint == endPoint &&
-            other.fillColor == fillColor &&
-            other.strokeColor == strokeColor &&
-            other.strokeWidth == strokeWidth;
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(startPoint, endPoint, fillColor, strokeColor, strokeWidth);
 }
 
 final class OvalShape extends TwoPointShape {
   const OvalShape({
     required super.startPoint,
     required super.endPoint,
+    super.id,
     super.fillColor,
     super.strokeColor,
     super.strokeWidth,
@@ -224,36 +400,30 @@ final class OvalShape extends TwoPointShape {
   }
 
   @override
-  OvalShape extendTo(Offset point) {
+  OvalShape createWith({
+    required Offset startPoint,
+    required Offset endPoint,
+    required String id,
+    required Color? fillColor,
+    required Color strokeColor,
+    required double strokeWidth,
+  }) {
     return OvalShape(
       startPoint: startPoint,
-      endPoint: point,
+      endPoint: endPoint,
+      id: id,
       fillColor: fillColor,
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
     );
   }
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is OvalShape &&
-            other.startPoint == startPoint &&
-            other.endPoint == endPoint &&
-            other.fillColor == fillColor &&
-            other.strokeColor == strokeColor &&
-            other.strokeWidth == strokeWidth;
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(startPoint, endPoint, fillColor, strokeColor, strokeWidth);
 }
 
 final class CircleShape extends TwoPointShape {
   CircleShape({
     required this.center,
     required this.radius,
+    super.id,
     super.fillColor,
     super.strokeColor,
     super.strokeWidth,
@@ -268,6 +438,7 @@ final class CircleShape extends TwoPointShape {
   factory CircleShape.fromBounds({
     required Offset startPoint,
     required Offset endPoint,
+    String id = '',
     Color? fillColor,
     Color strokeColor = _defaultStrokeColor,
     double strokeWidth = _defaultStrokeWidth,
@@ -283,6 +454,7 @@ final class CircleShape extends TwoPointShape {
     return CircleShape(
       center: center,
       radius: radius,
+      id: id,
       fillColor: fillColor,
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
@@ -290,36 +462,30 @@ final class CircleShape extends TwoPointShape {
   }
 
   @override
-  CircleShape extendTo(Offset point) {
+  CircleShape createWith({
+    required Offset startPoint,
+    required Offset endPoint,
+    required String id,
+    required Color? fillColor,
+    required Color strokeColor,
+    required double strokeWidth,
+  }) {
     return CircleShape.fromBounds(
       startPoint: startPoint,
-      endPoint: point,
+      endPoint: endPoint,
+      id: id,
       fillColor: fillColor,
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
     );
   }
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is CircleShape &&
-            other.center == center &&
-            other.radius == radius &&
-            other.fillColor == fillColor &&
-            other.strokeColor == strokeColor &&
-            other.strokeWidth == strokeWidth;
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(center, radius, fillColor, strokeColor, strokeWidth);
 }
 
 final class SquareShape extends TwoPointShape {
   SquareShape({
     required this.center,
     required this.sideLength,
+    super.id,
     super.fillColor,
     super.strokeColor,
     super.strokeWidth,
@@ -340,6 +506,7 @@ final class SquareShape extends TwoPointShape {
   factory SquareShape.fromBounds({
     required Offset startPoint,
     required Offset endPoint,
+    String id = '',
     Color? fillColor,
     Color strokeColor = _defaultStrokeColor,
     double strokeWidth = _defaultStrokeWidth,
@@ -355,6 +522,7 @@ final class SquareShape extends TwoPointShape {
     return SquareShape(
       center: center,
       sideLength: sideLength,
+      id: id,
       fillColor: fillColor,
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
@@ -362,30 +530,23 @@ final class SquareShape extends TwoPointShape {
   }
 
   @override
-  SquareShape extendTo(Offset point) {
+  SquareShape createWith({
+    required Offset startPoint,
+    required Offset endPoint,
+    required String id,
+    required Color? fillColor,
+    required Color strokeColor,
+    required double strokeWidth,
+  }) {
     return SquareShape.fromBounds(
       startPoint: startPoint,
-      endPoint: point,
+      endPoint: endPoint,
+      id: id,
       fillColor: fillColor,
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
     );
   }
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is SquareShape &&
-            other.center == center &&
-            other.sideLength == sideLength &&
-            other.fillColor == fillColor &&
-            other.strokeColor == strokeColor &&
-            other.strokeWidth == strokeWidth;
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(center, sideLength, fillColor, strokeColor, strokeWidth);
 }
 
 const Color _defaultFillColor = Color(0x00000000);
