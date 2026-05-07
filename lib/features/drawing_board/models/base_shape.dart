@@ -73,7 +73,7 @@ abstract base class PathShape extends BaseShape {
   @override
   PathShape finalize() {
     if (isFinalized) {
-      return clone();
+      return this;
     }
 
     return createWith(
@@ -114,25 +114,38 @@ abstract base class PathShape extends BaseShape {
 
   @override
   bool operator ==(Object other) {
-    return identical(this, other) ||
-        other.runtimeType == runtimeType &&
-            other is PathShape &&
-            other.id == id &&
-            other.isFinalized == isFinalized &&
-            listEquals(other.points, points) &&
-            other.strokeColor == strokeColor &&
-            other.strokeWidth == strokeWidth;
+    if (identical(this, other)) return true;
+    if (other.runtimeType != runtimeType || other is! PathShape) return false;
+
+    if (other.id != id ||
+        other.isFinalized != isFinalized ||
+        other.strokeColor != strokeColor ||
+        other.strokeWidth != strokeWidth) {
+      return false;
+    }
+
+    if (isFinalized) return true;
+
+    if (points.length != other.points.length) return false;
+
+    return listEquals(points, other.points);
   }
 
+  late final int _cachedHashCode = _computeHashCode();
+
+  int _computeHashCode() {
+    return Object.hash(
+      runtimeType,
+      id,
+      isFinalized,
+      Object.hashAll(points),
+      strokeColor,
+      strokeWidth,
+    );
+    }
+
   @override
-  int get hashCode => Object.hash(
-    runtimeType,
-    id,
-    isFinalized,
-    Object.hashAll(points),
-    strokeColor,
-    strokeWidth,
-  );
+  int get hashCode => _cachedHashCode;
 }
 
 abstract base class TwoPointShape extends BaseShape {
