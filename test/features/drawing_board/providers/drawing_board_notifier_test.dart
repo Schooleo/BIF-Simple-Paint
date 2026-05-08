@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:bif_simple_paint/features/drawing_board/models/base_shape.dart';
+import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
@@ -260,7 +260,7 @@ void main() {
         'lib/features/drawing_board/providers/drawing_board_notifier.dart',
       ).readAsStringSync();
       final shapeSource = File(
-        'lib/features/drawing_board/models/base_shape.dart',
+        'lib/features/drawing_board/models/shape/base_shape.dart',
       ).readAsStringSync();
 
       expect(shapeSource, contains('BaseShape copyStyle'));

@@ -1,6 +1,6 @@
 import 'dart:ui';
 
-import 'package:bif_simple_paint/features/drawing_board/models/base_shape.dart';
+import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
