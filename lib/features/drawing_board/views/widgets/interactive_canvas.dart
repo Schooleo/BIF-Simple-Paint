@@ -1,4 +1,4 @@
-import 'package:bif_simple_paint/features/drawing_board/models/base_shape.dart';
+import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
 import 'package:flutter/material.dart';

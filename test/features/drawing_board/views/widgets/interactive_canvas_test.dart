@@ -1,4 +1,4 @@
-import 'package:bif_simple_paint/features/drawing_board/models/base_shape.dart';
+import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/interactive_canvas.dart';
 import 'package:flutter/material.dart';
@@ -14,11 +14,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: const MaterialApp(
-          home: SizedBox(
-            width: 200,
-            height: 200,
-            child: InteractiveCanvas(),
-          ),
+          home: SizedBox(width: 200, height: 200, child: InteractiveCanvas()),
         ),
       ),
     );
