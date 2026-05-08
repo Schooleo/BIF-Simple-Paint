@@ -68,6 +68,20 @@ void main() {
         endPoint: Offset(5, 5),
         strokeColor: Color(0xFF111111),
       ),
+      const ArrowShape(
+        id: 'arrow',
+        startPoint: Offset(2, 2),
+        endPoint: Offset(8, 8),
+        strokeColor: Color(0xFF222222),
+      ),
+      const TextShape(
+        id: 'text',
+        startPoint: Offset(1, 1),
+        endPoint: Offset(6, 6),
+        text: 'Hello',
+        fontSize: 16,
+        strokeColor: Color(0xFF333333),
+      ),
       const RectangleShape(
         id: 'rect',
         start: Offset(0, 0),
@@ -194,5 +208,80 @@ void main() {
     expect(shape.sideLength, 10);
     expect(shape.startPoint, const Offset(0, 5));
     expect(shape.endPoint, const Offset(10, 15));
+  });
+
+  test('ArrowShape.extendTo updates end point', () {
+    const start = Offset(1, 1);
+    const end = Offset(4, 4);
+    const next = Offset(9, 7);
+
+    final shape =
+        const ArrowShape(startPoint: start, endPoint: end).extendTo(next)
+            as ArrowShape;
+
+    expect(shape.startPoint, start);
+    expect(shape.endPoint, next);
+  });
+
+  test('TextShape clone and copyStyle preserve text and fontSize', () {
+    const start = Offset(2, 3);
+    const end = Offset(6, 9);
+
+    const shape = TextShape(
+      id: 'text-1',
+      startPoint: start,
+      endPoint: end,
+      text: 'Hi',
+      fontSize: 14,
+      fillColor: Color(0x2200FF00),
+      strokeColor: Color(0xFF112233),
+      strokeWidth: 3,
+    );
+
+    final clone = shape.clone();
+    final styled = shape.copyStyle(
+      fillColor: const Color(0x3300FF00),
+      applyFillColor: true,
+      strokeColor: const Color(0xFF445566),
+      strokeWidth: 5,
+    );
+
+    expect(clone, equals(shape));
+    expect(identical(clone, shape), isFalse);
+    expect(clone.text, 'Hi');
+    expect(clone.fontSize, 14);
+
+    expect(styled.text, 'Hi');
+    expect(styled.fontSize, 14);
+    expect(styled.fillColor, const Color(0x3300FF00));
+    expect(styled.strokeColor, const Color(0xFF445566));
+    expect(styled.strokeWidth, 5);
+  });
+
+  test('TextShape equality includes text and fontSize', () {
+    const start = Offset(0, 0);
+    const end = Offset(5, 5);
+
+    const base = TextShape(
+      startPoint: start,
+      endPoint: end,
+      text: 'A',
+      fontSize: 12,
+    );
+    const differentText = TextShape(
+      startPoint: start,
+      endPoint: end,
+      text: 'B',
+      fontSize: 12,
+    );
+    const differentSize = TextShape(
+      startPoint: start,
+      endPoint: end,
+      text: 'A',
+      fontSize: 13,
+    );
+
+    expect(base == differentText, isFalse);
+    expect(base == differentSize, isFalse);
   });
 }
