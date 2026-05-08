@@ -1,6 +1,6 @@
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_board_mobile_layout.dart';
-import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_board_tool_button.dart';
+import 'package:bif_simple_paint/features/drawing_board/views/widgets/tool_palette.dart';
 import 'package:flutter/material.dart';
 
 class DrawingBoardScreen extends StatelessWidget {
@@ -62,36 +62,7 @@ class CanvasArea extends StatelessWidget {
               ).textTheme.titleMedium?.copyWith(color: textColor),
             ),
           ),
-          const Positioned(top: 16, right: 16, child: ToolRail()),
-        ],
-      ),
-    );
-  }
-}
-
-class ToolRail extends StatelessWidget {
-  const ToolRail({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final AppColors colors = Theme.of(context).extension<AppColors>()!;
-    final Color background = colors.surfaceFloating;
-    final Color border = colors.borderSubtle;
-
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: background,
-        border: Border.all(color: border),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: const Column(
-        children: <Widget>[
-          ToolButton(icon: Icons.show_chart, isActive: true),
-          SizedBox(height: 8),
-          ToolButton(icon: Icons.crop_square),
-          SizedBox(height: 8),
-          ToolButton(icon: Icons.circle),
+          const Positioned(top: 24, right: 24, child: ToolPalette()),
         ],
       ),
     );

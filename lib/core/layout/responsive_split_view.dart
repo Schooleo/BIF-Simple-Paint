@@ -64,9 +64,7 @@ class _ResponsiveSplitViewState extends State<ResponsiveSplitView> {
               width: targetSidebarWidth,
               decoration: BoxDecoration(
                 color: colors.backgroundSidebar,
-                border: Border(
-                  right: BorderSide(color: colors.borderSubtle),
-                ),
+                border: Border(right: BorderSide(color: colors.borderSubtle)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -115,8 +113,9 @@ class _SidebarHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final IconData icon =
-        isCollapsed ? Icons.chevron_right : Icons.chevron_left;
+    final IconData icon = isCollapsed
+        ? Icons.chevron_right
+        : Icons.chevron_left;
 
     return Padding(
       padding: const EdgeInsets.all(12),
