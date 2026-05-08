@@ -45,7 +45,10 @@ class _ResponsiveSplitViewState extends State<ResponsiveSplitView> {
       return widget.mobile;
     }
 
-    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final AppColors colors = Theme.of(context).extension<AppColors>() ??
+        (Theme.of(context).brightness == Brightness.dark
+            ? AppColors.dark
+            : AppColors.light);
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
