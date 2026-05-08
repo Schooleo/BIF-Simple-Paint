@@ -40,5 +40,12 @@ void main() {
       expect(state.currentStrokeColor, const Color(0xFFFF0000));
       expect(state.currentStrokeWidth, 5);
     });
+
+    test('cursor tool selection is supported', () {
+      notifier.selectTool(ToolType.cursor);
+
+      final state = container.read(toolSelectionNotifierProvider);
+      expect(state.toolType, ToolType.cursor);
+    });
   });
 }

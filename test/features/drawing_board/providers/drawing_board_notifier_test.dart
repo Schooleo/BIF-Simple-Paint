@@ -90,6 +90,20 @@ void main() {
       expect(activeTempShape.id, isNotEmpty);
     });
 
+    test('startDrawing is a no-op for cursor tool', () {
+      notifier.startDrawing(
+        const Offset(10, 12),
+        selection(toolType: ToolType.cursor),
+      );
+
+      final state = container.read(drawingBoardNotifierProvider);
+
+      expect(state.activeTempShape, isNull);
+      expect(state.finalizedShapes, isEmpty);
+      expect(state.undoStack, isEmpty);
+      expect(state.redoStack, isEmpty);
+    });
+
     test('updateDrawing is a no-op before startDrawing', () {
       final before = container.read(drawingBoardNotifierProvider);
 
@@ -137,6 +151,47 @@ void main() {
       final state = container.read(drawingBoardNotifierProvider);
       expect(state.selectedShapeId, shapeId);
       expect(state.selectedShape?.id, shapeId);
+    });
+
+    test('transform updates push an undo snapshot', () {
+      notifier.startDrawing(
+        const Offset(1, 1),
+        selection(toolType: ToolType.shape),
+      );
+      notifier.updateDrawing(const Offset(10, 12));
+      notifier.commitDrawing();
+      final shapeId = container
+          .read(drawingBoardNotifierProvider)
+          .finalizedShapes
+          .single
+          .id;
+      notifier.selectShape(shapeId);
+
+      final before = container.read(drawingBoardNotifierProvider);
+      notifier.beginTransform();
+      notifier.updateSelectedShape(
+        before.selectedShape!.translate(const Offset(10, 5)),
+      );
+      notifier.endTransform();
+
+      final after = container.read(drawingBoardNotifierProvider);
+
+      expect(after.undoStack.length, before.undoStack.length + 1);
+      expect(after.redoStack, isEmpty);
+      expect(after.selectedShapeId, shapeId);
+    });
+
+    test('transform end without changes does not push undo history', () {
+      notifier.startDrawing(const Offset(2, 2), selection());
+      notifier.commitDrawing();
+
+      final before = container.read(drawingBoardNotifierProvider);
+      notifier.beginTransform();
+      notifier.endTransform();
+
+      final after = container.read(drawingBoardNotifierProvider);
+      expect(after.undoStack.length, before.undoStack.length);
+      expect(after.redoStack, before.redoStack);
     });
 
     test(
@@ -267,7 +322,7 @@ void main() {
       expect(shapeSource, contains('BaseShape clone'));
       expect(notifierSource, contains('void undo()'));
       expect(notifierSource, contains('void redo()'));
-      expect(notifierSource, contains('void selectShape(String id)'));
+      expect(notifierSource, contains('void selectShape(String? id)'));
       expect(notifierSource, contains('void updateSelectedShapeStyle'));
 
       for (final source in <String>[notifierSource, shapeSource]) {
