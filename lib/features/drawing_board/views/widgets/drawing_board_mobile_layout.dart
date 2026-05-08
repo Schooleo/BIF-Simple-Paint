@@ -1,5 +1,4 @@
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
-import 'package:bif_simple_paint/core/theme/app_colors_dark.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_board_tool_button.dart';
 import 'package:flutter/material.dart';
 
@@ -8,10 +7,8 @@ class MobileLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark
-        ? AppColorsDark.canvas
-        : AppColors.background;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.backgroundCanvas;
 
     return Container(
       color: background,
@@ -40,13 +37,11 @@ class MobileTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark ? AppColorsDark.surface : AppColors.surface;
-    final Color border = isDark ? AppColorsDark.border : AppColors.border;
-    final Color textColor = isDark
-        ? AppColorsDark.textPrimary
-        : AppColors.textPrimary;
-    final Color iconColor = isDark ? AppColorsDark.icon : AppColors.icon;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.surfaceFloating;
+    final Color border = colors.borderSubtle;
+    final Color textColor = colors.textPrimary;
+    final Color iconColor = colors.iconPrimary;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -90,10 +85,8 @@ class MobileCanvasArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color textColor = isDark
-        ? AppColorsDark.textMuted
-        : AppColors.textMuted;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color textColor = colors.textMuted;
 
     return Center(
       child: Text(
@@ -111,9 +104,9 @@ class MobileQuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark ? AppColorsDark.surface : AppColors.surface;
-    final Color border = isDark ? AppColorsDark.border : AppColors.border;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.surfaceFloating;
+    final Color border = colors.borderSubtle;
 
     return Container(
       padding: const EdgeInsets.all(8),
@@ -138,13 +131,11 @@ class MobileBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark ? AppColorsDark.surface : AppColors.surface;
-    final Color border = isDark ? AppColorsDark.border : AppColors.border;
-    final Color iconColor = isDark ? AppColorsDark.icon : AppColors.icon;
-    final Color textColor = isDark
-        ? AppColorsDark.textSecondary
-        : AppColors.textSecondary;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.surfaceFloating;
+    final Color border = colors.borderSubtle;
+    final Color iconColor = colors.iconPrimary;
+    final Color textColor = colors.textSecondary;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -199,9 +190,9 @@ class MobileToolBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark ? AppColorsDark.surface : AppColors.surface;
-    final Color border = isDark ? AppColorsDark.border : AppColors.border;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.surfaceFloating;
+    final Color border = colors.borderSubtle;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

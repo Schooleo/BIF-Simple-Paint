@@ -1,5 +1,4 @@
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
-import 'package:bif_simple_paint/core/theme/app_colors_dark.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_board_mobile_layout.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_board_tool_button.dart';
 import 'package:flutter/material.dart';
@@ -40,8 +39,8 @@ class Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark ? AppColorsDark.sidebar : AppColors.sidebar;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.backgroundSidebar;
 
     return Container(
       width: 260,
@@ -76,11 +75,9 @@ class SidebarHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color titleColor = isDark
-        ? AppColorsDark.textPrimary
-        : AppColors.textPrimary;
-    final Color iconColor = isDark ? AppColorsDark.icon : AppColors.icon;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color titleColor = colors.textPrimary;
+    final Color iconColor = colors.iconPrimary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -109,16 +106,12 @@ class SidebarSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark ? AppColorsDark.surface : AppColors.surface;
-    final Color border = isDark ? AppColorsDark.border : AppColors.border;
-    final Color iconColor = isDark ? AppColorsDark.icon : AppColors.icon;
-    final Color hintColor = isDark
-        ? AppColorsDark.textMuted
-        : AppColors.textMuted;
-    final Color textColor = isDark
-        ? AppColorsDark.textPrimary
-        : AppColors.textPrimary;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.surfaceSecondary;
+    final Color border = colors.borderSubtle;
+    final Color iconColor = colors.iconPrimary;
+    final Color hintColor = colors.textMuted;
+    final Color textColor = colors.textPrimary;
 
     return TextField(
       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: textColor),
@@ -160,15 +153,11 @@ class FileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark ? AppColorsDark.surface : AppColors.surface;
-    final Color border = isDark ? AppColorsDark.border : AppColors.border;
-    final Color titleColor = isDark
-        ? AppColorsDark.textPrimary
-        : AppColors.textPrimary;
-    final Color subtitleColor = isDark
-        ? AppColorsDark.textMuted
-        : AppColors.textMuted;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.surfacePrimary;
+    final Color border = colors.borderSubtle;
+    final Color titleColor = colors.textPrimary;
+    final Color subtitleColor = colors.textMuted;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -204,13 +193,9 @@ class CanvasArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark
-        ? AppColorsDark.canvas
-        : AppColors.background;
-    final Color textColor = isDark
-        ? AppColorsDark.textMuted
-        : AppColors.textMuted;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.backgroundCanvas;
+    final Color textColor = colors.textMuted;
 
     return Container(
       color: background,
@@ -248,9 +233,9 @@ class ToolRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark ? AppColorsDark.surface : AppColors.surface;
-    final Color border = isDark ? AppColorsDark.border : AppColors.border;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.surfaceFloating;
+    final Color border = colors.borderSubtle;
 
     return Container(
       padding: const EdgeInsets.all(8),

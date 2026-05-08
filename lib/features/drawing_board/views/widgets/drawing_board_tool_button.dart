@@ -1,5 +1,4 @@
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
-import 'package:bif_simple_paint/core/theme/app_colors_dark.dart';
 import 'package:flutter/material.dart';
 
 class ToolButton extends StatelessWidget {
@@ -10,17 +9,11 @@ class ToolButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color border = isDark ? AppColorsDark.border : AppColors.border;
-    final Color activeBackground = isDark
-        ? AppColorsDark.selectionLight
-        : AppColors.selectionLight;
-    final Color idleBackground = isDark
-        ? AppColorsDark.surface
-        : AppColors.surface;
-    final Color iconColor = isActive
-        ? (isDark ? AppColorsDark.iconActive : AppColors.icon)
-        : (isDark ? AppColorsDark.icon : AppColors.iconInactive);
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color border = colors.borderSubtle;
+    final Color activeBackground = colors.overlaySelection;
+    final Color idleBackground = colors.surfacePrimary;
+    final Color iconColor = isActive ? colors.iconActive : colors.iconMuted;
 
     return Container(
       width: 36,
