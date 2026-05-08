@@ -12,22 +12,6 @@ const Duration _hoverDuration = Duration(milliseconds: 160);
 const Duration _selectDuration = Duration(milliseconds: 200);
 
 class _ToolPaletteState extends State<ToolPalette> {
-  static const List<Color> _strokeColors = <Color>[
-    Color(0xFF2563EB),
-    Color(0xFF111827),
-    Color(0xFFEF4444),
-    Color(0xFF10B981),
-    Color(0xFFF59E0B),
-  ];
-
-  static const List<Color> _fillColors = <Color>[
-    Color(0x00000000),
-    Color(0xFF2563EB),
-    Color(0xFF111827),
-    Color(0xFFEF4444),
-    Color(0xFF10B981),
-  ];
-
   static const List<IconData> _tools = <IconData>[
     Icons.near_me_outlined,
     Icons.edit_outlined,
@@ -53,6 +37,20 @@ class _ToolPaletteState extends State<ToolPalette> {
   @override
   Widget build(BuildContext context) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final List<Color> strokeColors = <Color>[
+      colors.paletteBlue,
+      colors.paletteInk,
+      colors.paletteRed,
+      colors.paletteGreen,
+      colors.paletteAmber,
+    ];
+    final List<Color> fillColors = <Color>[
+      AppColors.drawingFillTransparent,
+      colors.paletteBlue,
+      colors.paletteInk,
+      colors.paletteRed,
+      colors.paletteGreen,
+    ];
 
     return Align(
       alignment: Alignment.centerRight,
@@ -108,7 +106,7 @@ class _ToolPaletteState extends State<ToolPalette> {
                 const SizedBox(height: 10),
                 _ColorRow(
                   colors: colors,
-                  swatches: _strokeColors,
+                  swatches: strokeColors,
                   selectedIndex: _selectedStrokeIndex,
                   hoveredIndex: _hoveredStrokeIndex,
                   onHover: (int? index) {
@@ -127,7 +125,7 @@ class _ToolPaletteState extends State<ToolPalette> {
                 const SizedBox(height: 10),
                 _ColorRow(
                   colors: colors,
-                  swatches: _fillColors,
+                  swatches: fillColors,
                   selectedIndex: _selectedFillIndex,
                   hoveredIndex: _hoveredFillIndex,
                   showTransparent: true,

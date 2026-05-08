@@ -167,14 +167,6 @@ class MobileFloatingToolbars extends StatefulWidget {
 }
 
 class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
-  static const List<Color> _strokeColors = <Color>[
-    Color(0xFF2563EB),
-    Color(0xFF111827),
-    Color(0xFFEF4444),
-    Color(0xFF10B981),
-    Color(0xFFF59E0B),
-  ];
-
   int _selectedColorIndex = 0;
   int _selectedToolIndex = 1;
   int _selectedShapeIndex = 0;
@@ -183,6 +175,13 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
   @override
   Widget build(BuildContext context) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final List<Color> paletteColors = <Color>[
+      colors.paletteBlue,
+      colors.paletteInk,
+      colors.paletteRed,
+      colors.paletteGreen,
+      colors.paletteAmber,
+    ];
 
     return SafeArea(
       top: false,
@@ -239,7 +238,7 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
                           const SizedBox(height: 10),
                           _ColorDotRow(
                             colors: colors,
-                            swatches: _strokeColors,
+                            swatches: paletteColors,
                             selectedIndex: _selectedColorIndex,
                             onSelected: (int index) {
                               setState(() {

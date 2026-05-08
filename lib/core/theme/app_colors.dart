@@ -25,6 +25,11 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.overlayPressed,
     required this.overlayDisabled,
     required this.overlaySelection,
+    required this.paletteBlue,
+    required this.paletteInk,
+    required this.paletteRed,
+    required this.paletteGreen,
+    required this.paletteAmber,
     required this.success,
     required this.warning,
     required this.error,
@@ -56,6 +61,11 @@ class AppColors extends ThemeExtension<AppColors> {
     overlayPressed: Color(0x1F2563EB),
     overlayDisabled: Color(0x1F94A3B8),
     overlaySelection: Color(0x332563EB),
+    paletteBlue: Color(0xFF2563EB),
+    paletteInk: Color(0xFF111827),
+    paletteRed: Color(0xFFEF4444),
+    paletteGreen: Color(0xFF10B981),
+    paletteAmber: Color(0xFFF59E0B),
     success: Color(0xFF10B981),
     warning: Color(0xFFF59E0B),
     error: Color(0xFFEF4444),
@@ -84,6 +94,11 @@ class AppColors extends ThemeExtension<AppColors> {
     overlayPressed: Color(0x263B82F6),
     overlayDisabled: Color(0x1F94A3B8),
     overlaySelection: Color(0x333B82F6),
+    paletteBlue: Color(0xFF3B82F6),
+    paletteInk: Color(0xFF111827),
+    paletteRed: Color(0xFFEF4444),
+    paletteGreen: Color(0xFF10B981),
+    paletteAmber: Color(0xFFF59E0B),
     success: Color(0xFF10B981),
     warning: Color(0xFFF59E0B),
     error: Color(0xFFEF4444),
@@ -111,6 +126,11 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color overlayPressed;
   final Color overlayDisabled;
   final Color overlaySelection;
+  final Color paletteBlue;
+  final Color paletteInk;
+  final Color paletteRed;
+  final Color paletteGreen;
+  final Color paletteAmber;
   final Color success;
   final Color warning;
   final Color error;
@@ -139,6 +159,11 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? overlayPressed,
     Color? overlayDisabled,
     Color? overlaySelection,
+    Color? paletteBlue,
+    Color? paletteInk,
+    Color? paletteRed,
+    Color? paletteGreen,
+    Color? paletteAmber,
     Color? success,
     Color? warning,
     Color? error,
@@ -166,6 +191,11 @@ class AppColors extends ThemeExtension<AppColors> {
       overlayPressed: overlayPressed ?? this.overlayPressed,
       overlayDisabled: overlayDisabled ?? this.overlayDisabled,
       overlaySelection: overlaySelection ?? this.overlaySelection,
+      paletteBlue: paletteBlue ?? this.paletteBlue,
+      paletteInk: paletteInk ?? this.paletteInk,
+      paletteRed: paletteRed ?? this.paletteRed,
+      paletteGreen: paletteGreen ?? this.paletteGreen,
+      paletteAmber: paletteAmber ?? this.paletteAmber,
       success: success ?? this.success,
       warning: warning ?? this.warning,
       error: error ?? this.error,
@@ -225,6 +255,11 @@ class AppColors extends ThemeExtension<AppColors> {
         other.overlaySelection,
         t,
       )!,
+      paletteBlue: Color.lerp(paletteBlue, other.paletteBlue, t)!,
+      paletteInk: Color.lerp(paletteInk, other.paletteInk, t)!,
+      paletteRed: Color.lerp(paletteRed, other.paletteRed, t)!,
+      paletteGreen: Color.lerp(paletteGreen, other.paletteGreen, t)!,
+      paletteAmber: Color.lerp(paletteAmber, other.paletteAmber, t)!,
       success: Color.lerp(success, other.success, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
       error: Color.lerp(error, other.error, t)!,
