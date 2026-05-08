@@ -1,1 +1,1 @@
-enum ToolType { brush, eraser, shape }
+enum ToolType { brush, eraser, shape, cursor }

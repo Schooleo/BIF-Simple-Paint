@@ -9,16 +9,26 @@ part 'drawing_board_notifier.g.dart';
 @riverpod
 class DrawingBoardNotifier extends _$DrawingBoardNotifier {
   int _shapeIdCounter = 0;
+  List<BaseShape>? _transformSnapshot;
 
   @override
   DrawingBoardState build() => DrawingBoardState.initial();
 
   void startDrawing(Offset point, ToolSelectionState toolSelection) {
+    if (toolSelection.toolType == ToolType.cursor) {
+      return;
+    }
+
+    final nextShape = _shapeFromTool(
+      point: point,
+      toolSelection: toolSelection,
+    );
+    if (nextShape == null) {
+      return;
+    }
+
     state = state.copyWith(
-      activeTempShape: _shapeFromTool(
-        point: point,
-        toolSelection: toolSelection,
-      ),
+      activeTempShape: nextShape,
     );
   }
 
@@ -101,8 +111,61 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
     );
   }
 
-  void selectShape(String id) {
+  void selectShape(String? id) {
+    if (id == null) {
+      state = state.copyWith(selectedShapeId: null);
+      return;
+    }
+
     state = state.copyWith(selectedShapeId: state.hasShape(id) ? id : null);
+  }
+
+  void beginTransform() {
+    _transformSnapshot ??= _cloneSnapshot(state.finalizedShapes);
+  }
+
+  void updateSelectedShape(BaseShape updatedShape) {
+    final selectedShapeId = state.selectedShapeId;
+    if (selectedShapeId == null || updatedShape.id != selectedShapeId) {
+      return;
+    }
+
+    final updatedShapes = state.finalizedShapes
+        .map((shape) =>
+            shape.id == selectedShapeId ? updatedShape : shape.clone())
+        .toList(growable: false);
+
+    state = state.copyWith(finalizedShapes: updatedShapes);
+  }
+
+  void endTransform() {
+    final previousSnapshot = _transformSnapshot;
+    if (previousSnapshot == null) {
+      return;
+    }
+
+    _transformSnapshot = null;
+
+    final currentSnapshot = _cloneSnapshot(state.finalizedShapes);
+    if (_snapshotsEqual(previousSnapshot, currentSnapshot)) {
+      return;
+    }
+
+    final nextUndoStack = <List<BaseShape>>[
+      ...state.undoStack.map(_cloneSnapshot),
+      _cloneSnapshot(previousSnapshot),
+    ];
+
+    state = state.copyWith(
+      finalizedShapes: currentSnapshot,
+      undoStack: nextUndoStack,
+      redoStack: const <List<BaseShape>>[],
+      activeTempShape: null,
+      selectedShapeId: _selectedShapeIdFor(
+        currentSnapshot,
+        preferredId: state.selectedShapeId,
+      ),
+    );
   }
 
   void updateSelectedShapeStyle({
@@ -172,7 +235,7 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
     );
   }
 
-  BaseShape _shapeFromTool({
+  BaseShape? _shapeFromTool({
     required Offset point,
     required ToolSelectionState toolSelection,
   }) {
@@ -199,11 +262,30 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
         strokeColor: toolSelection.currentStrokeColor,
         strokeWidth: toolSelection.currentStrokeWidth,
       ),
+      ToolType.cursor => null,
     };
   }
 
   List<BaseShape> _cloneSnapshot(List<BaseShape> shapes) {
     return shapes.map((shape) => shape.clone()).toList(growable: false);
+  }
+
+  bool _snapshotsEqual(List<BaseShape> a, List<BaseShape> b) {
+    if (identical(a, b)) {
+      return true;
+    }
+
+    if (a.length != b.length) {
+      return false;
+    }
+
+    for (var index = 0; index < a.length; index += 1) {
+      if (a[index] != b[index]) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   String? _selectedShapeIdFor(
