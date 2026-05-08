@@ -10,11 +10,13 @@ abstract final class AppRouter {
   static Map<String, WidgetBuilder> get routes => <String, WidgetBuilder>{
     canvasListPath: (_) => const ResponsiveSplitView(
       mobile: CanvasListScreen(),
-      desktop: DrawingBoardScreen(),
+      sidebar: CanvasListScreen(),
+      content: DrawingBoardScreen(),
     ),
     drawingBoardPath: (_) => const ResponsiveSplitView(
       mobile: DrawingBoardScreen(),
-      desktop: DrawingBoardScreen(),
+      sidebar: CanvasListScreen(),
+      content: DrawingBoardScreen(),
     ),
   };
 }
