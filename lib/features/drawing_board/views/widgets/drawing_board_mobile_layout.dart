@@ -6,8 +6,21 @@ import 'package:flutter/material.dart';
 
 const Duration _animationDuration = Duration(milliseconds: 180);
 
-class MobileLayout extends StatelessWidget {
+class MobileLayout extends StatefulWidget {
   const MobileLayout({super.key});
+
+  @override
+  State<MobileLayout> createState() => _MobileLayoutState();
+}
+
+class _MobileLayoutState extends State<MobileLayout> {
+  bool _isSelectionMode = false;
+
+  void _toggleMode() {
+    setState(() {
+      _isSelectionMode = !_isSelectionMode;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,15 +31,25 @@ class MobileLayout extends StatelessWidget {
       color: background,
       child: SafeArea(
         child: Stack(
-          children: const <Widget>[
-            Positioned.fill(child: MobileCanvasArea()),
-            Positioned(top: 12, left: 16, right: 16, child: MobileTopBar()),
-            Positioned(right: 16, top: 120, child: MobileQuickActions()),
-            Positioned(
+          children: <Widget>[
+            const Positioned.fill(child: MobileCanvasArea()),
+            const Positioned(
+              top: 12,
+              left: 16,
+              right: 16,
+              child: MobileTopBar(),
+            ),
+            const Positioned(right: 16, top: 120, child: MobileQuickActions()),
+            AnimatedPositioned(
+              duration: _animationDuration,
+              curve: Curves.easeOutCubic,
               left: 0,
               right: 0,
-              bottom: 16,
-              child: MobileFloatingToolbars(),
+              bottom: _isSelectionMode ? 8 : 16,
+              child: MobileFloatingToolbars(
+                isSelectionMode: _isSelectionMode,
+                onToggleMode: _toggleMode,
+              ),
             ),
           ],
         ),
@@ -130,7 +153,14 @@ class MobileQuickActions extends StatelessWidget {
 }
 
 class MobileFloatingToolbars extends StatefulWidget {
-  const MobileFloatingToolbars({super.key});
+  const MobileFloatingToolbars({
+    super.key,
+    required this.isSelectionMode,
+    required this.onToggleMode,
+  });
+
+  final bool isSelectionMode;
+  final VoidCallback onToggleMode;
 
   @override
   State<MobileFloatingToolbars> createState() => _MobileFloatingToolbarsState();
@@ -144,16 +174,8 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
     Color(0xFF10B981),
     Color(0xFFF59E0B),
   ];
-  static const List<Color> _fillColors = <Color>[
-    Color(0x00000000),
-    Color(0xFF2563EB),
-    Color(0xFF111827),
-    Color(0xFFEF4444),
-    Color(0xFF10B981),
-  ];
 
-  int _selectedStrokeIndex = 0;
-  int _selectedFillIndex = 0;
+  int _selectedColorIndex = 0;
   int _selectedToolIndex = 1;
   int _selectedShapeIndex = 0;
   double _strokeWidth = 2;
@@ -169,69 +191,71 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            _FrostedPill(
-              colors: colors,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Row(
-                    children: <Widget>[
-                      Text(
-                        'STROKE',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colors.textSecondary,
-                          letterSpacing: 1.1,
-                          fontWeight: FontWeight.w600,
-                        ),
+            AnimatedSwitcher(
+              duration: _animationDuration,
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: widget.isSelectionMode
+                  ? const SizedBox.shrink()
+                  : _FrostedPill(
+                      key: const ValueKey<String>('stroke-panel'),
+                      colors: colors,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Row(
+                            children: <Widget>[
+                              Text(
+                                'STROKE',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: colors.textSecondary,
+                                      letterSpacing: 1.1,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${_strokeWidth.round()}px',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: colors.textSecondary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Slider(
+                            value: _strokeWidth,
+                            min: 1,
+                            max: 12,
+                            onChanged: (double value) {
+                              setState(() {
+                                _strokeWidth = value;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          _ColorDotRow(
+                            colors: colors,
+                            swatches: _strokeColors,
+                            selectedIndex: _selectedColorIndex,
+                            onSelected: (int index) {
+                              setState(() {
+                                _selectedColorIndex = index;
+                              });
+                            },
+                          ),
+                        ],
                       ),
-                      const Spacer(),
-                      Text(
-                        '${_strokeWidth.round()}px',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colors.textSecondary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Slider(
-                    value: _strokeWidth,
-                    min: 1,
-                    max: 12,
-                    onChanged: (double value) {
-                      setState(() {
-                        _strokeWidth = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  _ColorRow(
-                    colors: colors,
-                    swatches: _strokeColors,
-                    selectedIndex: _selectedStrokeIndex,
-                    onSelected: (int index) {
-                      setState(() {
-                        _selectedStrokeIndex = index;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  _ColorRow(
-                    colors: colors,
-                    swatches: _fillColors,
-                    selectedIndex: _selectedFillIndex,
-                    showTransparent: true,
-                    onSelected: (int index) {
-                      setState(() {
-                        _selectedFillIndex = index;
-                      });
-                    },
-                  ),
-                ],
-              ),
+                    ),
             ),
-            const SizedBox(height: 10),
+            AnimatedOpacity(
+              duration: _animationDuration,
+              opacity: widget.isSelectionMode ? 0 : 1,
+              child: const SizedBox(height: 10),
+            ),
             _FrostedPill(
               colors: colors,
               child: Row(
@@ -280,6 +304,15 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
                     },
                   ),
                   const Spacer(),
+                  _ToolChip(
+                    icon: widget.isSelectionMode
+                        ? Icons.select_all
+                        : Icons.pan_tool_alt,
+                    isSelected: widget.isSelectionMode,
+                    colors: colors,
+                    onTap: widget.onToggleMode,
+                  ),
+                  const SizedBox(width: 8),
                   _ActionChip(icon: Icons.undo, colors: colors, onTap: () {}),
                   const SizedBox(width: 8),
                   _ActionChip(icon: Icons.redo, colors: colors, onTap: () {}),
@@ -294,7 +327,7 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
 }
 
 class _FrostedPill extends StatelessWidget {
-  const _FrostedPill({required this.colors, required this.child});
+  const _FrostedPill({super.key, required this.colors, required this.child});
 
   final AppColors colors;
   final Widget child;
@@ -328,20 +361,18 @@ class _FrostedPill extends StatelessWidget {
   }
 }
 
-class _ColorRow extends StatelessWidget {
-  const _ColorRow({
+class _ColorDotRow extends StatelessWidget {
+  const _ColorDotRow({
     required this.colors,
     required this.swatches,
     required this.selectedIndex,
     required this.onSelected,
-    this.showTransparent = false,
   });
 
   final AppColors colors;
   final List<Color> swatches;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
-  final bool showTransparent;
 
   @override
   Widget build(BuildContext context) {
@@ -349,18 +380,18 @@ class _ColorRow extends StatelessWidget {
       children: List<Widget>.generate(swatches.length, (int index) {
         final bool isSelected = selectedIndex == index;
         final Color fill = swatches[index];
-        final bool isTransparent = fill.a == 0 && showTransparent;
+        final bool isTransparent = fill.a == 0;
         final Color ringColor = isSelected
             ? colors.accentPrimary
             : colors.borderSubtle;
 
         return Padding(
-          padding: const EdgeInsets.only(right: 10),
+          padding: const EdgeInsets.only(right: 8),
           child: AnimatedContainer(
             duration: _animationDuration,
             curve: Curves.easeOutCubic,
-            height: 30,
-            width: 30,
+            height: 28,
+            width: 28,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: isTransparent ? colors.surfaceSecondary : fill,
@@ -471,9 +502,9 @@ class _ShapeMenu extends StatelessWidget {
   final ValueChanged<int> onSelected;
 
   static const List<_ShapeOption> _options = <_ShapeOption>[
-    _ShapeOption(label: 'Triangle', icon: Icons.change_history),
-    _ShapeOption(label: 'Square', icon: Icons.crop_square),
+    _ShapeOption(label: 'Rectangle', icon: Icons.crop_square),
     _ShapeOption(label: 'Circle', icon: Icons.circle_outlined),
+    _ShapeOption(label: 'Triangle', icon: Icons.change_history),
   ];
 
   @override
@@ -495,26 +526,19 @@ class _ShapeMenu extends StatelessWidget {
           final _ShapeOption option = _options[index];
           return PopupMenuItem<int>(
             value: index,
-            child: Row(
-              children: <Widget>[
-                Icon(option.icon, size: 18, color: colors.iconPrimary),
-                const SizedBox(width: 8),
-                Text(
-                  option.label,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelMedium?.copyWith(color: colors.textPrimary),
-                ),
-              ],
+            child: Center(
+              child: Icon(option.icon, size: 20, color: colors.iconPrimary),
             ),
           );
         });
       },
-      child: _ToolChip(
-        icon: selected.icon,
-        isSelected: false,
-        colors: colors,
-        onTap: () {},
+      child: AbsorbPointer(
+        child: _ToolChip(
+          icon: selected.icon,
+          isSelected: false,
+          colors: colors,
+          onTap: () {},
+        ),
       ),
     );
   }
