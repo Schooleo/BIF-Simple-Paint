@@ -1,7 +1,9 @@
 import 'dart:collection';
+import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:meta/meta.dart';
+
+import 'package:bif_simple_paint/core/utils/geometry_helper.dart';
 
 sealed class BaseShape {
   const BaseShape({
@@ -17,6 +19,8 @@ sealed class BaseShape {
   BlendMode get blendMode => BlendMode.srcOver;
 
   BaseShape extendTo(Offset point);
+
+  bool contains(Offset point);
 
   BaseShape finalize() => this;
 
@@ -68,6 +72,28 @@ abstract base class PathShape extends BaseShape {
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
     );
+  }
+
+  @override
+  bool contains(Offset point) {
+    final threshold = strokeWidth + 5.0;
+
+    if (_points.length == 1) {
+      return (point - _points.first).distance <= threshold;
+    }
+
+    for (var index = 0; index < _points.length - 1; index++) {
+      final distance = GeometryHelper.distanceToLineSegment(
+        point,
+        _points[index],
+        _points[index + 1],
+      );
+      if (distance <= threshold) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   @override
@@ -128,7 +154,7 @@ abstract base class PathShape extends BaseShape {
 
     if (points.length != other.points.length) return false;
 
-    return listEquals(points, other.points);
+    return _listEquals(points, other.points);
   }
 
   late final int _cachedHashCode = _computeHashCode();
@@ -351,6 +377,18 @@ final class LineShape extends TwoPointShape {
       strokeWidth: strokeWidth,
     );
   }
+
+  @override
+  bool contains(Offset point) {
+    final threshold = strokeWidth + 5.0;
+    final distance = GeometryHelper.distanceToLineSegment(
+      point,
+      startPoint,
+      endPoint,
+    );
+
+    return distance <= threshold;
+  }
 }
 
 final class ArrowShape extends TwoPointShape {
@@ -380,6 +418,18 @@ final class ArrowShape extends TwoPointShape {
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
     );
+  }
+
+  @override
+  bool contains(Offset point) {
+    final threshold = strokeWidth + 5.0;
+    final distance = GeometryHelper.distanceToLineSegment(
+      point,
+      startPoint,
+      endPoint,
+    );
+
+    return distance <= threshold;
   }
 }
 
@@ -479,6 +529,19 @@ final class TextShape extends TwoPointShape {
     text,
     fontSize,
   );
+
+  @override
+  bool contains(Offset point) {
+    final minDx = startPoint.dx < endPoint.dx ? startPoint.dx : endPoint.dx;
+    final maxDx = startPoint.dx > endPoint.dx ? startPoint.dx : endPoint.dx;
+    final minDy = startPoint.dy < endPoint.dy ? startPoint.dy : endPoint.dy;
+    final maxDy = startPoint.dy > endPoint.dy ? startPoint.dy : endPoint.dy;
+
+    return point.dx >= minDx &&
+        point.dx <= maxDx &&
+        point.dy >= minDy &&
+        point.dy <= maxDy;
+  }
 }
 
 final class RectangleShape extends TwoPointShape {
@@ -512,6 +575,19 @@ final class RectangleShape extends TwoPointShape {
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
     );
+  }
+
+  @override
+  bool contains(Offset point) {
+    final minDx = startPoint.dx < endPoint.dx ? startPoint.dx : endPoint.dx;
+    final maxDx = startPoint.dx > endPoint.dx ? startPoint.dx : endPoint.dx;
+    final minDy = startPoint.dy < endPoint.dy ? startPoint.dy : endPoint.dy;
+    final maxDy = startPoint.dy > endPoint.dy ? startPoint.dy : endPoint.dy;
+
+    return point.dx >= minDx &&
+        point.dx <= maxDx &&
+        point.dy >= minDy &&
+        point.dy <= maxDy;
   }
 }
 
@@ -557,6 +633,31 @@ final class OvalShape extends TwoPointShape {
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
     );
+  }
+
+  @override
+  bool contains(Offset point) {
+    final radiusX = this.radiusX;
+    final radiusY = this.radiusY;
+
+    if (radiusX == 0 && radiusY == 0) {
+      return point == center;
+    }
+
+    if (radiusX == 0) {
+      final dy = (point.dy - center.dy).abs();
+      return point.dx == center.dx && dy <= radiusY;
+    }
+
+    if (radiusY == 0) {
+      final dx = (point.dx - center.dx).abs();
+      return point.dy == center.dy && dx <= radiusX;
+    }
+
+    final normalizedX = (point.dx - center.dx) / radiusX;
+    final normalizedY = (point.dy - center.dy) / radiusY;
+
+    return normalizedX * normalizedX + normalizedY * normalizedY <= 1.0;
   }
 }
 
@@ -619,6 +720,11 @@ final class CircleShape extends TwoPointShape {
       strokeColor: strokeColor,
       strokeWidth: strokeWidth,
     );
+  }
+
+  @override
+  bool contains(Offset point) {
+    return (point - center).distance <= radius;
   }
 }
 
@@ -688,8 +794,32 @@ final class SquareShape extends TwoPointShape {
       strokeWidth: strokeWidth,
     );
   }
+
+  @override
+  bool contains(Offset point) {
+    final minDx = startPoint.dx < endPoint.dx ? startPoint.dx : endPoint.dx;
+    final maxDx = startPoint.dx > endPoint.dx ? startPoint.dx : endPoint.dx;
+    final minDy = startPoint.dy < endPoint.dy ? startPoint.dy : endPoint.dy;
+    final maxDy = startPoint.dy > endPoint.dy ? startPoint.dy : endPoint.dy;
+
+    return point.dx >= minDx &&
+        point.dx <= maxDx &&
+        point.dy >= minDy &&
+        point.dy <= maxDy;
+  }
 }
 
 const Color _defaultFillColor = Color(0x00000000);
 const Color _defaultStrokeColor = Color(0xFF000000);
 const double _defaultStrokeWidth = 2.0;
+
+bool _listEquals<T>(List<T> a, List<T> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+
+  for (var index = 0; index < a.length; index++) {
+    if (a[index] != b[index]) return false;
+  }
+
+  return true;
+}
