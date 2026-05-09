@@ -1,5 +1,6 @@
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_board_mobile_layout.dart';
+import 'package:bif_simple_paint/features/drawing_board/views/widgets/interactive_canvas.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/tool_palette.dart';
 import 'package:flutter/material.dart';
 
@@ -42,6 +43,7 @@ class CanvasArea extends StatelessWidget {
       color: background,
       child: Stack(
         children: <Widget>[
+          const Positioned.fill(child: InteractiveCanvas()),
           Align(
             alignment: Alignment.topCenter,
             child: Padding(
@@ -52,14 +54,6 @@ class CanvasArea extends StatelessWidget {
                   context,
                 ).textTheme.titleMedium?.copyWith(color: textColor),
               ),
-            ),
-          ),
-          Center(
-            child: Text(
-              'Canvas Area',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(color: textColor),
             ),
           ),
           const Positioned(top: 24, right: 24, child: ToolPalette()),

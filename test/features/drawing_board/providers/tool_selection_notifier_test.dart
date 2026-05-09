@@ -22,6 +22,7 @@ void main() {
       final state = container.read(toolSelectionNotifierProvider);
 
       expect(state.toolType, ToolType.brush);
+      expect(state.shapeType, ShapeType.rectangle);
       expect(state.currentFillColor, const Color(0x00000000));
       expect(state.currentStrokeColor, const Color(0xFF000000));
       expect(state.currentStrokeWidth, 2);
@@ -39,6 +40,20 @@ void main() {
       expect(state.currentFillColor, const Color(0x2200FF00));
       expect(state.currentStrokeColor, const Color(0xFFFF0000));
       expect(state.currentStrokeWidth, 5);
+    });
+
+    test('cursor tool selection is supported', () {
+      notifier.selectTool(ToolType.cursor);
+
+      final state = container.read(toolSelectionNotifierProvider);
+      expect(state.toolType, ToolType.cursor);
+    });
+
+    test('shape type selection is supported', () {
+      notifier.selectShapeType(ShapeType.line);
+
+      final state = container.read(toolSelectionNotifierProvider);
+      expect(state.shapeType, ShapeType.line);
     });
   });
 }

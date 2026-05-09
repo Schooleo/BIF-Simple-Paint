@@ -9,23 +9,52 @@ part 'drawing_board_notifier.g.dart';
 @riverpod
 class DrawingBoardNotifier extends _$DrawingBoardNotifier {
   int _shapeIdCounter = 0;
+  List<BaseShape>? _transformSnapshot;
 
   @override
   DrawingBoardState build() => DrawingBoardState.initial();
 
   void startDrawing(Offset point, ToolSelectionState toolSelection) {
+    if (toolSelection.toolType == ToolType.cursor) {
+      return;
+    }
+
+    final nextShape = _shapeFromTool(
+      point: point,
+      toolSelection: toolSelection,
+    );
+    if (nextShape == null) {
+      return;
+    }
+
     state = state.copyWith(
-      activeTempShape: _shapeFromTool(
-        point: point,
-        toolSelection: toolSelection,
-      ),
+      activeTempShape: nextShape,
     );
   }
 
-  void updateDrawing(Offset point) {
+  void updateDrawing(
+    Offset point, {
+    ToolSelectionState? toolSelection,
+    bool constrainToSquare = false,
+  }) {
     final activeTempShape = state.activeTempShape;
 
     if (activeTempShape == null) {
+      return;
+    }
+
+    if (toolSelection != null &&
+        toolSelection.toolType == ToolType.shape &&
+        activeTempShape is TwoPointShape) {
+      state = state.copyWith(
+        activeTempShape: _shapeFromBounds(
+          toolSelection,
+          activeTempShape.startPoint,
+          point,
+          activeTempShape.id,
+          constrain: constrainToSquare,
+        ),
+      );
       return;
     }
 
@@ -101,8 +130,61 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
     );
   }
 
-  void selectShape(String id) {
+  void selectShape(String? id) {
+    if (id == null) {
+      state = state.copyWith(selectedShapeId: null);
+      return;
+    }
+
     state = state.copyWith(selectedShapeId: state.hasShape(id) ? id : null);
+  }
+
+  void beginTransform() {
+    _transformSnapshot ??= _cloneSnapshot(state.finalizedShapes);
+  }
+
+  void updateSelectedShape(BaseShape updatedShape) {
+    final selectedShapeId = state.selectedShapeId;
+    if (selectedShapeId == null || updatedShape.id != selectedShapeId) {
+      return;
+    }
+
+    final updatedShapes = state.finalizedShapes
+        .map((shape) =>
+            shape.id == selectedShapeId ? updatedShape : shape.clone())
+        .toList(growable: false);
+
+    state = state.copyWith(finalizedShapes: updatedShapes);
+  }
+
+  void endTransform() {
+    final previousSnapshot = _transformSnapshot;
+    if (previousSnapshot == null) {
+      return;
+    }
+
+    _transformSnapshot = null;
+
+    final currentSnapshot = _cloneSnapshot(state.finalizedShapes);
+    if (_snapshotsEqual(previousSnapshot, currentSnapshot)) {
+      return;
+    }
+
+    final nextUndoStack = <List<BaseShape>>[
+      ...state.undoStack.map(_cloneSnapshot),
+      _cloneSnapshot(previousSnapshot),
+    ];
+
+    state = state.copyWith(
+      finalizedShapes: currentSnapshot,
+      undoStack: nextUndoStack,
+      redoStack: const <List<BaseShape>>[],
+      activeTempShape: null,
+      selectedShapeId: _selectedShapeIdFor(
+        currentSnapshot,
+        preferredId: state.selectedShapeId,
+      ),
+    );
   }
 
   void updateSelectedShapeStyle({
@@ -172,7 +254,7 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
     );
   }
 
-  BaseShape _shapeFromTool({
+  BaseShape? _shapeFromTool({
     required Offset point,
     required ToolSelectionState toolSelection,
   }) {
@@ -191,9 +273,72 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
         strokeColor: toolSelection.currentStrokeColor,
         strokeWidth: toolSelection.currentStrokeWidth,
       ),
-      ToolType.shape => RectangleShape(
-        start: point,
-        end: point,
+      ToolType.shape => _shapeFromBounds(toolSelection, point, point, id),
+      ToolType.cursor => null,
+    };
+  }
+
+  BaseShape _shapeFromBounds(
+    ToolSelectionState toolSelection,
+    Offset start,
+    Offset end,
+    String id, {
+    bool constrain = false,
+  }) {
+    return switch (toolSelection.shapeType) {
+      ShapeType.rectangle => constrain
+          ? SquareShape.fromBounds(
+              startPoint: start,
+              endPoint: end,
+              id: id,
+              fillColor: toolSelection.currentFillColor,
+              strokeColor: toolSelection.currentStrokeColor,
+              strokeWidth: toolSelection.currentStrokeWidth,
+            )
+          : RectangleShape(
+              start: start,
+              end: end,
+              id: id,
+              fillColor: toolSelection.currentFillColor,
+              strokeColor: toolSelection.currentStrokeColor,
+              strokeWidth: toolSelection.currentStrokeWidth,
+            ),
+      ShapeType.oval => constrain
+          ? CircleShape.fromBounds(
+              startPoint: start,
+              endPoint: end,
+              id: id,
+              fillColor: toolSelection.currentFillColor,
+              strokeColor: toolSelection.currentStrokeColor,
+              strokeWidth: toolSelection.currentStrokeWidth,
+            )
+          : OvalShape(
+              startPoint: start,
+              endPoint: end,
+              id: id,
+              fillColor: toolSelection.currentFillColor,
+              strokeColor: toolSelection.currentStrokeColor,
+              strokeWidth: toolSelection.currentStrokeWidth,
+            ),
+      ShapeType.line => LineShape(
+        startPoint: start,
+        endPoint: end,
+        id: id,
+        strokeColor: toolSelection.currentStrokeColor,
+        strokeWidth: toolSelection.currentStrokeWidth,
+      ),
+      ShapeType.arrow => ArrowShape(
+        startPoint: start,
+        endPoint: end,
+        id: id,
+        strokeColor: toolSelection.currentStrokeColor,
+        strokeWidth: toolSelection.currentStrokeWidth,
+      ),
+      ShapeType.text => TextShape(
+        startPoint: start,
+        endPoint: end,
+        text: '',
+        fontSize: 16.0,
         id: id,
         fillColor: toolSelection.currentFillColor,
         strokeColor: toolSelection.currentStrokeColor,
@@ -204,6 +349,24 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
 
   List<BaseShape> _cloneSnapshot(List<BaseShape> shapes) {
     return shapes.map((shape) => shape.clone()).toList(growable: false);
+  }
+
+  bool _snapshotsEqual(List<BaseShape> a, List<BaseShape> b) {
+    if (identical(a, b)) {
+      return true;
+    }
+
+    if (a.length != b.length) {
+      return false;
+    }
+
+    for (var index = 0; index < a.length; index += 1) {
+      if (a[index] != b[index]) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   String? _selectedShapeIdFor(

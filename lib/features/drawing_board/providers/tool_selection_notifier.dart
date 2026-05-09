@@ -11,24 +11,28 @@ final toolSelectionNotifierProvider =
 class ToolSelectionState {
   const ToolSelectionState({
     this.toolType = ToolType.brush,
+    this.shapeType = ShapeType.rectangle,
     this.currentFillColor = AppColors.drawingFillTransparent,
     this.currentStrokeColor = AppColors.drawingStrokeDefault,
     this.currentStrokeWidth = 2,
   });
 
   final ToolType toolType;
+  final ShapeType shapeType;
   final Color currentFillColor;
   final Color currentStrokeColor;
   final double currentStrokeWidth;
 
   ToolSelectionState copyWith({
     ToolType? toolType,
+    ShapeType? shapeType,
     Color? currentFillColor,
     Color? currentStrokeColor,
     double? currentStrokeWidth,
   }) {
     return ToolSelectionState(
       toolType: toolType ?? this.toolType,
+      shapeType: shapeType ?? this.shapeType,
       currentFillColor: currentFillColor ?? this.currentFillColor,
       currentStrokeColor: currentStrokeColor ?? this.currentStrokeColor,
       currentStrokeWidth: currentStrokeWidth ?? this.currentStrokeWidth,
@@ -42,6 +46,10 @@ class ToolSelectionNotifier extends Notifier<ToolSelectionState> {
 
   void selectTool(ToolType toolType) {
     state = state.copyWith(toolType: toolType);
+  }
+
+  void selectShapeType(ShapeType shapeType) {
+    state = state.copyWith(shapeType: shapeType);
   }
 
   void updateFillColor(Color fillColor) {
