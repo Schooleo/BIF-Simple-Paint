@@ -396,7 +396,7 @@ class _MobileFloatingToolbarsState
 
   int _indexForColor(List<Color> swatches, Color color) {
     final int index = swatches.indexWhere((Color item) {
-      return item.value == color.value;
+      return item == color;
     });
 
     return index == -1 ? 0 : index;
