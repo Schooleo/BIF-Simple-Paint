@@ -17,7 +17,8 @@ void main() {
       const MaterialApp(
         home: ResponsiveSplitView(
           mobile: Scaffold(body: Center(child: Text('MobileChild'))),
-          desktop: Scaffold(body: Center(child: Text('DesktopChild'))),
+          sidebar: SizedBox.shrink(),
+          content: Scaffold(body: Center(child: Text('DesktopChild'))),
         ),
       ),
     );
@@ -38,7 +39,8 @@ void main() {
       const MaterialApp(
         home: ResponsiveSplitView(
           mobile: SizedBox.shrink(),
-          desktop: Scaffold(body: Center(child: Text('DesktopChild'))),
+          sidebar: SizedBox.shrink(),
+          content: Scaffold(body: Center(child: Text('DesktopChild'))),
         ),
       ),
     );

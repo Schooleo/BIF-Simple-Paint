@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import 'package:bif_simple_paint/core/theme/app_colors.dart';
+
 abstract base class BaseShape {
   const BaseShape({
     this.id = '',
@@ -35,6 +37,6 @@ abstract base class BaseShape {
 
 enum ResizeCorner { topLeft, topRight, bottomLeft, bottomRight }
 
-const Color defaultFillColor = Color(0x00000000);
-const Color defaultStrokeColor = Color(0xFF000000);
+const Color defaultFillColor = AppColors.drawingFillTransparent;
+const Color defaultStrokeColor = AppColors.drawingStrokeDefault;
 const double defaultStrokeWidth = 2.0;
