@@ -1,6 +1,5 @@
 import 'package:bif_simple_paint/core/routing/app_router.dart';
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
-import 'package:bif_simple_paint/core/theme/app_colors_dark.dart';
 import 'package:flutter/material.dart';
 
 class CanvasListScreen extends StatelessWidget {
@@ -8,13 +7,9 @@ class CanvasListScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark
-        ? AppColorsDark.background
-        : AppColors.background;
-    final Color titleColor = isDark
-        ? AppColorsDark.textPrimary
-        : AppColors.textPrimary;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.backgroundPrimary;
+    final Color titleColor = colors.textPrimary;
 
     return Scaffold(
       backgroundColor: background,
@@ -81,16 +76,12 @@ class _CanvasSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark ? AppColorsDark.surface : AppColors.surface;
-    final Color border = isDark ? AppColorsDark.border : AppColors.border;
-    final Color iconColor = isDark ? AppColorsDark.icon : AppColors.icon;
-    final Color hintColor = isDark
-        ? AppColorsDark.textMuted
-        : AppColors.textMuted;
-    final Color textColor = isDark
-        ? AppColorsDark.textPrimary
-        : AppColors.textPrimary;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.surfaceSecondary;
+    final Color border = colors.borderSubtle;
+    final Color iconColor = colors.iconPrimary;
+    final Color hintColor = colors.textMuted;
+    final Color textColor = colors.textPrimary;
 
     return TextField(
       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: textColor),
@@ -133,15 +124,11 @@ class _FileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color background = isDark ? AppColorsDark.surface : AppColors.surface;
-    final Color border = isDark ? AppColorsDark.border : AppColors.border;
-    final Color titleColor = isDark
-        ? AppColorsDark.textPrimary
-        : AppColors.textPrimary;
-    final Color subtitleColor = isDark
-        ? AppColorsDark.textMuted
-        : AppColors.textMuted;
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color background = colors.surfacePrimary;
+    final Color border = colors.borderSubtle;
+    final Color titleColor = colors.textPrimary;
+    final Color subtitleColor = colors.textMuted;
 
     return Material(
       color: background,

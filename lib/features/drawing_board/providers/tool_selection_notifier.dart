@@ -1,3 +1,4 @@
+import 'package:bif_simple_paint/core/theme/app_colors.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,8 +11,8 @@ final toolSelectionNotifierProvider =
 class ToolSelectionState {
   const ToolSelectionState({
     this.toolType = ToolType.brush,
-    this.currentFillColor = const Color(0x00000000),
-    this.currentStrokeColor = const Color(0xFF000000),
+    this.currentFillColor = AppColors.drawingFillTransparent,
+    this.currentStrokeColor = AppColors.drawingStrokeDefault,
     this.currentStrokeWidth = 2,
   });
 
