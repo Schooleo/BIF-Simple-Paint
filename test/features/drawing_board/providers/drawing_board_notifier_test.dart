@@ -24,12 +24,14 @@ void main() {
 
     ToolSelectionState selection({
       ToolType toolType = ToolType.brush,
+      ShapeType shapeType = ShapeType.rectangle,
       Color fillColor = const Color(0x00000000),
       Color strokeColor = const Color(0xFF000000),
       double strokeWidth = 2,
     }) {
       return ToolSelectionState(
         toolType: toolType,
+        shapeType: shapeType,
         currentFillColor: fillColor,
         currentStrokeColor: strokeColor,
         currentStrokeWidth: strokeWidth,
@@ -72,6 +74,7 @@ void main() {
         const Offset(5, 6),
         selection(
           toolType: ToolType.shape,
+          shapeType: ShapeType.rectangle,
           fillColor: const Color(0x2200FF00),
           strokeColor: const Color(0xFF123456),
           strokeWidth: 7,
@@ -87,6 +90,21 @@ void main() {
       expect(activeTempShape.fillColor, const Color(0x2200FF00));
       expect(activeTempShape.strokeColor, const Color(0xFF123456));
       expect(activeTempShape.strokeWidth, 7);
+      expect(activeTempShape.id, isNotEmpty);
+    });
+
+    test('startDrawing maps shape type to line preview', () {
+      notifier.startDrawing(
+        const Offset(2, 3),
+        selection(toolType: ToolType.shape, shapeType: ShapeType.line),
+      );
+
+      final activeTempShape =
+          container.read(drawingBoardNotifierProvider).activeTempShape
+              as LineShape;
+
+      expect(activeTempShape.startPoint, const Offset(2, 3));
+      expect(activeTempShape.endPoint, const Offset(2, 3));
       expect(activeTempShape.id, isNotEmpty);
     });
 

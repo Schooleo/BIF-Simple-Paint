@@ -213,7 +213,6 @@ class MobileFloatingToolbars extends ConsumerStatefulWidget {
 
 class _MobileFloatingToolbarsState
     extends ConsumerState<MobileFloatingToolbars> {
-  int _selectedShapeIndex = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -238,6 +237,9 @@ class _MobileFloatingToolbarsState
     final int selectedColorIndex = _indexForColor(
       paletteColors,
       toolSelection.currentStrokeColor,
+    );
+    final int selectedShapeIndex = _indexForShapeType(
+      toolSelection.shapeType,
     );
     final double strokeWidth = toolSelection.currentStrokeWidth;
 
@@ -354,11 +356,11 @@ class _MobileFloatingToolbarsState
                   _ShapeMenu(
                     colors: colors,
                     isSelected: toolSelection.toolType == ToolType.shape,
-                    selectedIndex: _selectedShapeIndex,
+                    selectedIndex: selectedShapeIndex,
                     onSelected: (int index) {
-                      setState(() {
-                        _selectedShapeIndex = index;
-                      });
+                      final ShapeType shapeType =
+                          _ShapeMenu.shapeTypeForIndex(index);
+                      toolSelectionNotifier.selectShapeType(shapeType);
                       toolSelectionNotifier.selectTool(ToolType.shape);
                     },
                   ),
@@ -398,6 +400,10 @@ class _MobileFloatingToolbarsState
     });
 
     return index == -1 ? 0 : index;
+  }
+
+  int _indexForShapeType(ShapeType shapeType) {
+    return _ShapeMenu.indexForShapeType(shapeType);
   }
 }
 
@@ -579,10 +585,44 @@ class _ShapeMenu extends StatelessWidget {
   final ValueChanged<int> onSelected;
 
   static const List<_ShapeOption> _options = <_ShapeOption>[
-    _ShapeOption(label: 'Rectangle', icon: Icons.crop_square),
-    _ShapeOption(label: 'Circle', icon: Icons.circle_outlined),
-    _ShapeOption(label: 'Triangle', icon: Icons.change_history),
+    _ShapeOption(
+      label: 'Rectangle',
+      icon: Icons.crop_square,
+      shapeType: ShapeType.rectangle,
+    ),
+    _ShapeOption(
+      label: 'Oval',
+      icon: Icons.circle_outlined,
+      shapeType: ShapeType.oval,
+    ),
+    _ShapeOption(
+      label: 'Line',
+      icon: Icons.show_chart,
+      shapeType: ShapeType.line,
+    ),
+    _ShapeOption(
+      label: 'Arrow',
+      icon: Icons.arrow_right_alt,
+      shapeType: ShapeType.arrow,
+    ),
+    _ShapeOption(
+      label: 'Text',
+      icon: Icons.text_fields,
+      shapeType: ShapeType.text,
+    ),
   ];
+
+  static int indexForShapeType(ShapeType shapeType) {
+    final int index = _options.indexWhere((option) {
+      return option.shapeType == shapeType;
+    });
+
+    return index == -1 ? 0 : index;
+  }
+
+  static ShapeType shapeTypeForIndex(int index) {
+    return _options[index].shapeType;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -622,8 +662,13 @@ class _ShapeMenu extends StatelessWidget {
 }
 
 class _ShapeOption {
-  const _ShapeOption({required this.label, required this.icon});
+  const _ShapeOption({
+    required this.label,
+    required this.icon,
+    required this.shapeType,
+  });
 
   final String label;
   final IconData icon;
+  final ShapeType shapeType;
 }

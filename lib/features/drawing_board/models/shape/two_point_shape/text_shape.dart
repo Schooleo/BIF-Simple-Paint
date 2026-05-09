@@ -71,6 +71,19 @@ final class TextShape extends TwoPointShape {
     );
   }
 
+  TextShape copyWithText({String? text, double? fontSize}) {
+    return TextShape(
+      startPoint: startPoint,
+      endPoint: endPoint,
+      text: text ?? this.text,
+      fontSize: fontSize ?? this.fontSize,
+      id: id,
+      fillColor: fillColor,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
+  }
+
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||

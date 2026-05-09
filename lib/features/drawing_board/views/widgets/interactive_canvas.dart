@@ -6,6 +6,7 @@ import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 const double _kHandleRadius = 6.0;
 const double _kHandleHitSize = 44.0;
@@ -24,31 +25,73 @@ class InteractiveCanvas extends ConsumerStatefulWidget {
 class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas> {
   _DragMode _dragMode = _DragMode.none;
   ResizeCorner? _resizeCorner;
+  bool _isShiftPressed = false;
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final drawingState = ref.watch(drawingBoardNotifierProvider);
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: _handleTapDown,
-      onPanStart: _handlePanStart,
-      onPanUpdate: _handlePanUpdate,
-      onPanEnd: _handlePanEnd,
-      child: CustomPaint(
-        painter: CanvasPainter(state: drawingState),
-        child: const SizedBox.expand(),
+    return Focus(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: _handleKeyEvent,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: _handleTapDown,
+        onPanStart: _handlePanStart,
+        onPanUpdate: _handlePanUpdate,
+        onPanEnd: _handlePanEnd,
+        child: CustomPaint(
+          painter: CanvasPainter(state: drawingState),
+          child: const SizedBox.expand(),
+        ),
       ),
     );
   }
 
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    final bool isShift = event.logicalKey == LogicalKeyboardKey.shiftLeft ||
+        event.logicalKey == LogicalKeyboardKey.shiftRight;
+    if (!isShift) {
+      return KeyEventResult.ignored;
+    }
+
+    final bool pressed = event is KeyDownEvent || event is KeyRepeatEvent;
+    if (_isShiftPressed != pressed) {
+      setState(() {
+        _isShiftPressed = pressed;
+      });
+    }
+
+    return KeyEventResult.handled;
+  }
+
   void _handleTapDown(TapDownDetails details) {
+    _focusNode.requestFocus();
     final toolSelection = ref.read(toolSelectionNotifierProvider);
     if (toolSelection.toolType != ToolType.cursor) {
       return;
     }
 
     final drawingState = ref.read(drawingBoardNotifierProvider);
+    
+    final selectedShape = drawingState.selectedShape;
+    if (selectedShape != null) {
+      final selectionBounds = _selectionBoundsFor(selectedShape);
+      final hitCorner = _hitTestResizeHandle(selectionBounds, details.localPosition);
+      
+      if (hitCorner != null) {
+        return; 
+      }
+    }
+
     final hitShape = _hitTestShapes(
       drawingState.finalizedShapes,
       details.localPosition,
@@ -60,6 +103,7 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas> {
   }
 
   void _handlePanStart(DragStartDetails details) {
+    _focusNode.requestFocus();
     final toolSelection = ref.read(toolSelectionNotifierProvider);
     final drawingBoardNotifier = ref.read(
       drawingBoardNotifierProvider.notifier,
@@ -98,7 +142,11 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas> {
       return;
     }
 
-    drawingBoardNotifier.updateDrawing(details.localPosition);
+    drawingBoardNotifier.updateDrawing(
+      details.localPosition,
+      toolSelection: toolSelection,
+      constrainToSquare: _isShiftPressed,
+    );
   }
 
   void _handlePanEnd(DragEndDetails details) {
@@ -117,6 +165,38 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas> {
     }
 
     drawingBoardNotifier.commitDrawing();
+
+    // Show text input dialog after committing a text shape
+    if (toolSelection.toolType == ToolType.shape &&
+        toolSelection.shapeType == ShapeType.text) {
+      _showTextInputDialog();
+    }
+  }
+
+  Future<void> _showTextInputDialog() async {
+    final drawingState = ref.read(drawingBoardNotifierProvider);
+    final selectedShape = drawingState.selectedShape;
+
+    if (selectedShape is! TextShape) return;
+
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => _TextInputDialog(
+        initialText: selectedShape.text,
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (result != null && result.isNotEmpty) {
+      ref.read(drawingBoardNotifierProvider.notifier).updateSelectedShape(
+        selectedShape.copyWithText(text: result),
+      );
+    } else {
+      // User cancelled or entered empty text — undo the empty text shape
+      ref.read(drawingBoardNotifierProvider.notifier).undo();
+    }
   }
 
   void _startCursorDrag(
@@ -149,6 +229,68 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas> {
 
 enum _DragMode { none, move, resize }
 
+// ---------------------------------------------------------------------------
+// Text input dialog shown after drawing a TextShape bounding box
+// ---------------------------------------------------------------------------
+class _TextInputDialog extends StatefulWidget {
+  const _TextInputDialog({this.initialText = ''});
+
+  final String initialText;
+
+  @override
+  State<_TextInputDialog> createState() => _TextInputDialogState();
+}
+
+class _TextInputDialogState extends State<_TextInputDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Enter Text'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLines: null,
+        decoration: const InputDecoration(
+          hintText: 'Type your text here…',
+          border: OutlineInputBorder(),
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('OK'),
+        ),
+      ],
+    );
+  }
+
+  void _submit() {
+    Navigator.of(context).pop(_controller.text);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Canvas painter — dual-pass fill+stroke for all shapes
+// ---------------------------------------------------------------------------
 class CanvasPainter extends CustomPainter {
   const CanvasPainter({required this.state});
 
@@ -156,6 +298,11 @@ class CanvasPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final bool needsLayer = _usesClearBlend(state);
+    if (needsLayer) {
+      canvas.saveLayer(Offset.zero & size, Paint());
+    }
+
     for (final shape in state.finalizedShapes) {
       _drawShape(canvas, shape);
     }
@@ -168,6 +315,10 @@ class CanvasPainter extends CustomPainter {
     final selectedShape = state.selectedShape;
     if (selectedShape != null) {
       _drawSelection(canvas, selectedShape);
+    }
+
+    if (needsLayer) {
+      canvas.restore();
     }
   }
 
@@ -226,8 +377,8 @@ class CanvasPainter extends CustomPainter {
   }
 
   void _drawArrowShape(Canvas canvas, ArrowShape shape) {
-    final paint = _strokePaint(shape, cap: StrokeCap.round);
-    canvas.drawLine(shape.startPoint, shape.endPoint, paint);
+    final strokePaint = _strokePaint(shape, cap: StrokeCap.round);
+    canvas.drawLine(shape.startPoint, shape.endPoint, strokePaint);
 
     final direction = shape.endPoint - shape.startPoint;
     if (direction.distance == 0) {
@@ -236,7 +387,7 @@ class CanvasPainter extends CustomPainter {
 
     final unit = direction / direction.distance;
     final arrowLength = 12 + shape.strokeWidth * 2;
-    final arrowAngle = 0.5;
+    const arrowAngle = 0.5;
     final left = Offset(
       unit.dx * -arrowLength * cos(arrowAngle) -
           unit.dy * -arrowLength * sin(arrowAngle),
@@ -250,8 +401,22 @@ class CanvasPainter extends CustomPainter {
           unit.dy * -arrowLength * cos(-arrowAngle),
     );
 
-    canvas.drawLine(shape.endPoint, shape.endPoint + left, paint);
-    canvas.drawLine(shape.endPoint, shape.endPoint + right, paint);
+    // Build arrowhead triangle path
+    final arrowPath = Path()
+      ..moveTo(shape.endPoint.dx, shape.endPoint.dy)
+      ..lineTo(shape.endPoint.dx + left.dx, shape.endPoint.dy + left.dy)
+      ..lineTo(shape.endPoint.dx + right.dx, shape.endPoint.dy + right.dy)
+      ..close();
+
+    // Dual-pass: fill arrowhead with stroke color, then stroke outline
+    final fillPaint = Paint()
+      ..color = shape.strokeColor
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true
+      ..blendMode = shape.blendMode;
+
+    canvas.drawPath(arrowPath, fillPaint);
+    canvas.drawPath(arrowPath, strokePaint);
   }
 
   void _drawRectShape(Canvas canvas, RectangleShape shape) {
@@ -280,7 +445,12 @@ class CanvasPainter extends CustomPainter {
 
   void _drawTextShape(Canvas canvas, TextShape shape) {
     final rect = Rect.fromPoints(shape.startPoint, shape.endPoint);
+
+    // Dual-pass: fill background then stroke border
     _drawFilledRect(canvas, rect, shape);
+
+    // Render text centered within bounds using TextPainter
+    if (shape.text.isEmpty) return;
 
     final textPainter = TextPainter(
       text: TextSpan(
@@ -292,14 +462,17 @@ class CanvasPainter extends CustomPainter {
       ),
       textAlign: TextAlign.center,
       textDirection: TextDirection.ltr,
-    )..layout(maxWidth: rect.width);
+    )..layout(maxWidth: rect.width.abs().clamp(1.0, double.infinity));
 
     final offset = Offset(
       rect.left + (rect.width - textPainter.width) / 2,
       rect.top + (rect.height - textPainter.height) / 2,
     );
 
+    canvas.save();
+    canvas.clipRect(rect);
     textPainter.paint(canvas, offset);
+    canvas.restore();
   }
 
   void _drawFilledRect(Canvas canvas, Rect rect, TwoPointShape shape) {
@@ -378,7 +551,25 @@ class CanvasPainter extends CustomPainter {
       canvas.drawCircle(position, _kHandleRadius, handlePaint);
     }
   }
+
+  bool _usesClearBlend(DrawingBoardState state) {
+    if (state.activeTempShape?.blendMode == BlendMode.clear) {
+      return true;
+    }
+
+    for (final shape in state.finalizedShapes) {
+      if (shape.blendMode == BlendMode.clear) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 }
+
+// ---------------------------------------------------------------------------
+// Hit-testing helpers (Z-index: reverse iteration for top-most-first)
+// ---------------------------------------------------------------------------
 
 BaseShape? _hitTestShapes(List<BaseShape> shapes, Offset point) {
   for (final shape in shapes.reversed) {

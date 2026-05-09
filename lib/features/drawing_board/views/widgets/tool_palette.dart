@@ -28,12 +28,33 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
   ];
 
   static const List<_ShapeOption> _shapeOptions = <_ShapeOption>[
-    _ShapeOption(label: 'Triangle', icon: Icons.change_history),
-    _ShapeOption(label: 'Square', icon: Icons.crop_square),
-    _ShapeOption(label: 'Circle', icon: Icons.circle_outlined),
+    _ShapeOption(
+      label: 'Rectangle',
+      icon: Icons.crop_square,
+      shapeType: ShapeType.rectangle,
+    ),
+    _ShapeOption(
+      label: 'Oval',
+      icon: Icons.circle_outlined,
+      shapeType: ShapeType.oval,
+    ),
+    _ShapeOption(
+      label: 'Line',
+      icon: Icons.show_chart,
+      shapeType: ShapeType.line,
+    ),
+    _ShapeOption(
+      label: 'Arrow',
+      icon: Icons.arrow_right_alt,
+      shapeType: ShapeType.arrow,
+    ),
+    _ShapeOption(
+      label: 'Text',
+      icon: Icons.text_fields,
+      shapeType: ShapeType.text,
+    ),
   ];
 
-  int _selectedShapeIndex = 0;
   int? _hoveredStrokeIndex;
   int? _hoveredFillIndex;
   int? _hoveredToolIndex;
@@ -73,6 +94,9 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
     final int selectedFillIndex = _indexForColor(
       fillColors,
       toolSelection.currentFillColor,
+    );
+    final int selectedShapeIndex = _indexForShapeType(
+      toolSelection.shapeType,
     );
     final int selectedToolIndex = _toolTypes.indexOf(toolSelection.toolType);
     final bool isShapeSelected = toolSelection.toolType == ToolType.shape;
@@ -248,8 +272,12 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
                       context,
                       colors,
                       isShapeSelected: isShapeSelected,
+                      selectedShapeIndex: selectedShapeIndex,
                       onSelectShape: () {
                         toolSelectionNotifier.selectTool(ToolType.shape);
+                      },
+                      onSelectShapeType: (ShapeType type) {
+                        toolSelectionNotifier.selectShapeType(type);
                       },
                     ),
                   ],
@@ -266,7 +294,9 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
     BuildContext context,
     AppColors colors, {
     required bool isShapeSelected,
+    required int selectedShapeIndex,
     required VoidCallback onSelectShape,
+    required ValueChanged<ShapeType> onSelectShapeType,
   }) {
     final bool isSelected = isShapeSelected;
     final Color background = isSelected
@@ -277,7 +307,7 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
     final Color iconColor = isSelected
         ? colors.backgroundPrimary
         : colors.iconPrimary;
-    final _ShapeOption selected = _shapeOptions[_selectedShapeIndex];
+    final _ShapeOption selected = _shapeOptions[selectedShapeIndex];
 
     return Tooltip(
       message: 'Shapes',
@@ -314,9 +344,7 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
               side: BorderSide(color: colors.borderSubtle),
             ),
             onSelected: (int index) {
-              setState(() {
-                _selectedShapeIndex = index;
-              });
+              onSelectShapeType(_shapeOptions[index].shapeType);
               onSelectShape();
             },
             itemBuilder: (BuildContext context) {
@@ -352,6 +380,14 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
   int _indexForColor(List<Color> swatches, Color color) {
     final int index = swatches.indexWhere((Color item) {
       return item.value == color.value;
+    });
+
+    return index == -1 ? 0 : index;
+  }
+
+  int _indexForShapeType(ShapeType shapeType) {
+    final int index = _shapeOptions.indexWhere((option) {
+      return option.shapeType == shapeType;
     });
 
     return index == -1 ? 0 : index;
@@ -460,8 +496,13 @@ class _ColorRow extends StatelessWidget {
 }
 
 class _ShapeOption {
-  const _ShapeOption({required this.label, required this.icon});
+  const _ShapeOption({
+    required this.label,
+    required this.icon,
+    required this.shapeType,
+  });
 
   final String label;
   final IconData icon;
+  final ShapeType shapeType;
 }

@@ -32,10 +32,29 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
     );
   }
 
-  void updateDrawing(Offset point) {
+  void updateDrawing(
+    Offset point, {
+    ToolSelectionState? toolSelection,
+    bool constrainToSquare = false,
+  }) {
     final activeTempShape = state.activeTempShape;
 
     if (activeTempShape == null) {
+      return;
+    }
+
+    if (toolSelection != null &&
+        toolSelection.toolType == ToolType.shape &&
+        activeTempShape is TwoPointShape) {
+      state = state.copyWith(
+        activeTempShape: _shapeFromBounds(
+          toolSelection,
+          activeTempShape.startPoint,
+          point,
+          activeTempShape.id,
+          constrain: constrainToSquare,
+        ),
+      );
       return;
     }
 
@@ -254,15 +273,77 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
         strokeColor: toolSelection.currentStrokeColor,
         strokeWidth: toolSelection.currentStrokeWidth,
       ),
-      ToolType.shape => RectangleShape(
-        start: point,
-        end: point,
+      ToolType.shape => _shapeFromBounds(toolSelection, point, point, id),
+      ToolType.cursor => null,
+    };
+  }
+
+  BaseShape _shapeFromBounds(
+    ToolSelectionState toolSelection,
+    Offset start,
+    Offset end,
+    String id, {
+    bool constrain = false,
+  }) {
+    return switch (toolSelection.shapeType) {
+      ShapeType.rectangle => constrain
+          ? SquareShape.fromBounds(
+              startPoint: start,
+              endPoint: end,
+              id: id,
+              fillColor: toolSelection.currentFillColor,
+              strokeColor: toolSelection.currentStrokeColor,
+              strokeWidth: toolSelection.currentStrokeWidth,
+            )
+          : RectangleShape(
+              start: start,
+              end: end,
+              id: id,
+              fillColor: toolSelection.currentFillColor,
+              strokeColor: toolSelection.currentStrokeColor,
+              strokeWidth: toolSelection.currentStrokeWidth,
+            ),
+      ShapeType.oval => constrain
+          ? CircleShape.fromBounds(
+              startPoint: start,
+              endPoint: end,
+              id: id,
+              fillColor: toolSelection.currentFillColor,
+              strokeColor: toolSelection.currentStrokeColor,
+              strokeWidth: toolSelection.currentStrokeWidth,
+            )
+          : OvalShape(
+              startPoint: start,
+              endPoint: end,
+              id: id,
+              fillColor: toolSelection.currentFillColor,
+              strokeColor: toolSelection.currentStrokeColor,
+              strokeWidth: toolSelection.currentStrokeWidth,
+            ),
+      ShapeType.line => LineShape(
+        startPoint: start,
+        endPoint: end,
+        id: id,
+        strokeColor: toolSelection.currentStrokeColor,
+        strokeWidth: toolSelection.currentStrokeWidth,
+      ),
+      ShapeType.arrow => ArrowShape(
+        startPoint: start,
+        endPoint: end,
+        id: id,
+        strokeColor: toolSelection.currentStrokeColor,
+        strokeWidth: toolSelection.currentStrokeWidth,
+      ),
+      ShapeType.text => TextShape(
+        startPoint: start,
+        endPoint: end,
+        text: '',
+        fontSize: 16.0,
         id: id,
         fillColor: toolSelection.currentFillColor,
         strokeColor: toolSelection.currentStrokeColor,
         strokeWidth: toolSelection.currentStrokeWidth,
       ),
-      ToolType.cursor => null,
     };
   }
 
