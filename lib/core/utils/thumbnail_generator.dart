@@ -63,23 +63,32 @@ abstract final class ThumbnailGenerator {
 
     // 4. Optimize Paint Object: Initialize EXACTLY ONE ui.Paint outside the loop
     final paint = ui.Paint()
-      ..isAntiAlias = false
-      ..filterQuality = ui.FilterQuality.low;
+      ..isAntiAlias = true
+      ..filterQuality = ui.FilterQuality.medium;
 
-    // Draw Shapes
-    for (final shape in shapes) {
-      _drawShape(canvas, shape, paint);
+    ui.Picture? picture;
+    ui.Image? image;
+    try {
+      // Draw Shapes in a layer so eraser clears only drawn content.
+      canvas.saveLayer(drawingBounds, ui.Paint());
+      try {
+        for (final shape in shapes) {
+          _drawShape(canvas, shape, paint);
+        }
+      } finally {
+        canvas.restore();
+      }
+
+      // Extract Image to Uint8List
+      picture = recorder.endRecording();
+      image = await picture.toImage(targetWidth.toInt(), targetHeight.toInt());
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+
+      return byteData?.buffer.asUint8List();
+    } finally {
+      image?.dispose();
+      picture?.dispose();
     }
-
-    // Extract Image to Uint8List
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(
-      targetWidth.toInt(),
-      targetHeight.toInt(),
-    );
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-
-    return byteData?.buffer.asUint8List();
   }
 
   // 3. Fix Type Mismatch & Add Shapes: _drawShape handles all base shapes
@@ -235,12 +244,15 @@ abstract final class ThumbnailGenerator {
         const ui.ParagraphConstraints(width: double.infinity),
       );
 
-      return ui.Rect.fromLTWH(
+      final textBounds = ui.Rect.fromLTWH(
         shape.startPoint.dx,
         shape.startPoint.dy,
         builtParagraph.maxIntrinsicWidth,
         builtParagraph.height,
       );
+
+      final halfStroke = shape.strokeWidth / 2;
+      return textBounds.inflate(halfStroke);
     }
 
     if (shape is TwoPointShape) {

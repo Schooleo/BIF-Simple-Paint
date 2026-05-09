@@ -94,6 +94,9 @@ void _validateDouble(double value, String name) {
   if (value.isNaN || value.isInfinite) {
     throw FormatException('Invalid $name: $value (cannot be NaN or Infinity)');
   }
+  if (name == 'strokeWidth' && (value < 0 || value > 1000)) {
+    throw FormatException('Invalid $name: $value (must be in 0..1000)');
+  }
 }
 
 Uint8List _encodeSync(
@@ -116,23 +119,126 @@ Uint8List _encodeSync(
 
   for (final shape in shapes) {
     if (shape is BrushShape) {
-      _writePathShape(builder, ShapeTypeId.brush, shape, sharedBuf);
+      _writePathShape(
+        builder,
+        ShapeTypeId.brush,
+        shape.id,
+        shape.strokeColor.toARGB32(),
+        shape.strokeWidth,
+        shape.isFinalized == true,
+        shape.points,
+        sharedBuf,
+      );
     } else if (shape is EraserShape) {
-      _writePathShape(builder, ShapeTypeId.eraser, shape, sharedBuf);
+      _writePathShape(
+        builder,
+        ShapeTypeId.eraser,
+        shape.id,
+        shape.strokeColor.toARGB32(),
+        shape.strokeWidth,
+        shape.isFinalized == true,
+        shape.points,
+        sharedBuf,
+      );
     } else if (shape is TextShape) {
-      _writeTextShape(builder, shape, sharedBuf);
+      _writeTextShape(
+        builder,
+        shape.id,
+        shape.strokeColor.toARGB32(),
+        shape.strokeWidth,
+        shape.fillColor?.toARGB32(),
+        shape.startPoint.dx,
+        shape.startPoint.dy,
+        shape.endPoint.dx,
+        shape.endPoint.dy,
+        shape.fontSize,
+        shape.text,
+        sharedBuf,
+      );
     } else if (shape is LineShape) {
-      _writeTwoPointShape(builder, ShapeTypeId.line, shape, sharedBuf);
+      _writeTwoPointShape(
+        builder,
+        ShapeTypeId.line,
+        shape.id,
+        shape.strokeColor.toARGB32(),
+        shape.strokeWidth,
+        shape.fillColor?.toARGB32(),
+        shape.startPoint.dx,
+        shape.startPoint.dy,
+        shape.endPoint.dx,
+        shape.endPoint.dy,
+        sharedBuf,
+      );
     } else if (shape is ArrowShape) {
-      _writeTwoPointShape(builder, ShapeTypeId.arrow, shape, sharedBuf);
+      _writeTwoPointShape(
+        builder,
+        ShapeTypeId.arrow,
+        shape.id,
+        shape.strokeColor.toARGB32(),
+        shape.strokeWidth,
+        shape.fillColor?.toARGB32(),
+        shape.startPoint.dx,
+        shape.startPoint.dy,
+        shape.endPoint.dx,
+        shape.endPoint.dy,
+        sharedBuf,
+      );
     } else if (shape is RectangleShape) {
-      _writeTwoPointShape(builder, ShapeTypeId.rectangle, shape, sharedBuf);
+      _writeTwoPointShape(
+        builder,
+        ShapeTypeId.rectangle,
+        shape.id,
+        shape.strokeColor.toARGB32(),
+        shape.strokeWidth,
+        shape.fillColor?.toARGB32(),
+        shape.start.dx,
+        shape.start.dy,
+        shape.end.dx,
+        shape.end.dy,
+        sharedBuf,
+      );
     } else if (shape is OvalShape) {
-      _writeTwoPointShape(builder, ShapeTypeId.oval, shape, sharedBuf);
+      _writeTwoPointShape(
+        builder,
+        ShapeTypeId.oval,
+        shape.id,
+        shape.strokeColor.toARGB32(),
+        shape.strokeWidth,
+        shape.fillColor?.toARGB32(),
+        shape.startPoint.dx,
+        shape.startPoint.dy,
+        shape.endPoint.dx,
+        shape.endPoint.dy,
+        sharedBuf,
+      );
     } else if (shape is CircleShape) {
-      _writeTwoPointShape(builder, ShapeTypeId.circle, shape, sharedBuf);
+      _writeTwoPointShape(
+        builder,
+        ShapeTypeId.circle,
+        shape.id,
+        shape.strokeColor.toARGB32(),
+        shape.strokeWidth,
+        shape.fillColor?.toARGB32(),
+        shape.startPoint.dx,
+        shape.startPoint.dy,
+        shape.endPoint.dx,
+        shape.endPoint.dy,
+        sharedBuf,
+      );
     } else if (shape is SquareShape) {
-      _writeTwoPointShape(builder, ShapeTypeId.square, shape, sharedBuf);
+      _writeTwoPointShape(
+        builder,
+        ShapeTypeId.square,
+        shape.id,
+        shape.strokeColor.toARGB32(),
+        shape.strokeWidth,
+        shape.fillColor?.toARGB32(),
+        shape.startPoint.dx,
+        shape.startPoint.dy,
+        shape.endPoint.dx,
+        shape.endPoint.dy,
+        sharedBuf,
+      );
     } else {
       throw UnsupportedError(
         'Unsupported shape type: ${shape.runtimeType}. Add serializer support before encoding.',
@@ -148,24 +254,26 @@ Uint8List _encodeSync(
 void _writeCommonHeader(
   BytesBuilder builder,
   int typeId,
-  BaseShape shape,
+  String id,
+  int strokeColorValue,
+  double strokeWidth,
   ByteData sharedBuf,
 ) {
-  final idBytes = utf8.encode(shape.id);
+  final idBytes = utf8.encode(id);
   if (idBytes.length > 65535) {
     throw const FormatException('Shape ID exceeds 65535 bytes limit.');
   }
-  _validateDouble(shape.strokeWidth, 'strokeWidth');
+  _validateDouble(strokeWidth, 'strokeWidth');
 
   // TypeID
   builder.addByte(typeId);
 
   // strokeColor as ARGB Uint32
-  sharedBuf.setUint32(0, shape.strokeColor.toARGB32(), Endian.big);
+  sharedBuf.setUint32(0, strokeColorValue, Endian.big);
   builder.add(sharedBuf.buffer.asUint8List(0, 4));
 
   // strokeWidth Float64
-  sharedBuf.setFloat64(0, shape.strokeWidth, Endian.little);
+  sharedBuf.setFloat64(0, strokeWidth, Endian.little);
   builder.add(sharedBuf.buffer.asUint8List(0, 8));
 
   // id as UTF-8 with Uint16 length prefix
@@ -177,50 +285,84 @@ void _writeCommonHeader(
 void _writeTwoPointShape(
   BytesBuilder builder,
   int typeId,
-  TwoPointShape shape,
+  String id,
+  int strokeColorValue,
+  double strokeWidth,
+  int? fillColorValue,
+  double startDx,
+  double startDy,
+  double endDx,
+  double endDy,
   ByteData sharedBuf,
 ) {
-  _writeCommonHeader(builder, typeId, shape, sharedBuf);
+  _writeCommonHeader(
+    builder,
+    typeId,
+    id,
+    strokeColorValue,
+    strokeWidth,
+    sharedBuf,
+  );
 
   // fill
-  final fillColor = shape.fillColor;
-  if (fillColor == null) {
+  if (fillColorValue == null) {
     builder.addByte(0x00);
   } else {
     builder.addByte(0x01);
-    sharedBuf.setUint32(0, fillColor.toARGB32(), Endian.big);
+    sharedBuf.setUint32(0, fillColorValue, Endian.big);
     builder.add(sharedBuf.buffer.asUint8List(0, 4));
   }
 
-  _validateDouble(shape.startPoint.dx, 'startPoint.dx');
-  _validateDouble(shape.startPoint.dy, 'startPoint.dy');
-  _validateDouble(shape.endPoint.dx, 'endPoint.dx');
-  _validateDouble(shape.endPoint.dy, 'endPoint.dy');
+  _validateDouble(startDx, 'startPoint.dx');
+  _validateDouble(startDy, 'startPoint.dy');
+  _validateDouble(endDx, 'endPoint.dx');
+  _validateDouble(endDy, 'endPoint.dy');
 
   // startPoint + endPoint
-  sharedBuf.setFloat64(0, shape.startPoint.dx, Endian.little);
-  sharedBuf.setFloat64(8, shape.startPoint.dy, Endian.little);
-  sharedBuf.setFloat64(16, shape.endPoint.dx, Endian.little);
-  sharedBuf.setFloat64(24, shape.endPoint.dy, Endian.little);
+  sharedBuf.setFloat64(0, startDx, Endian.little);
+  sharedBuf.setFloat64(8, startDy, Endian.little);
+  sharedBuf.setFloat64(16, endDx, Endian.little);
+  sharedBuf.setFloat64(24, endDy, Endian.little);
   builder.add(sharedBuf.buffer.asUint8List(0, 32));
 }
 
 void _writeTextShape(
   BytesBuilder builder,
-  TextShape shape,
+  String id,
+  int strokeColorValue,
+  double strokeWidth,
+  int? fillColorValue,
+  double startDx,
+  double startDy,
+  double endDx,
+  double endDy,
+  double fontSize,
+  String text,
   ByteData sharedBuf,
 ) {
   // Reuse TwoPointShape writer for the common + coordinate parts
-  _writeTwoPointShape(builder, ShapeTypeId.text, shape, sharedBuf);
+  _writeTwoPointShape(
+    builder,
+    ShapeTypeId.text,
+    id,
+    strokeColorValue,
+    strokeWidth,
+    fillColorValue,
+    startDx,
+    startDy,
+    endDx,
+    endDy,
+    sharedBuf,
+  );
 
-  _validateDouble(shape.fontSize, 'fontSize');
+  _validateDouble(fontSize, 'fontSize');
 
   // fontSize
-  sharedBuf.setFloat64(0, shape.fontSize, Endian.little);
+  sharedBuf.setFloat64(0, fontSize, Endian.little);
   builder.add(sharedBuf.buffer.asUint8List(0, 8));
 
   // text  (Uint32 length + UTF-8 bytes)
-  final textBytes = utf8.encode(shape.text);
+  final textBytes = utf8.encode(text);
   if (textBytes.length > 5000) {
     throw const FormatException('Text length exceeds 5000 bytes limit.');
   }
@@ -233,15 +375,24 @@ void _writeTextShape(
 void _writePathShape(
   BytesBuilder builder,
   int typeId,
-  PathShape shape,
+  String id,
+  int strokeColorValue,
+  double strokeWidth,
+  bool isFinalized,
+  List<Offset> points,
   ByteData sharedBuf,
 ) {
-  _writeCommonHeader(builder, typeId, shape, sharedBuf);
+  _writeCommonHeader(
+    builder,
+    typeId,
+    id,
+    strokeColorValue,
+    strokeWidth,
+    sharedBuf,
+  );
 
   // isFinalized flag
-  builder.addByte(shape.isFinalized == true ? 0x01 : 0x00);
-
-  final points = shape.points;
+  builder.addByte(isFinalized ? 0x01 : 0x00);
 
   // pointCount Uint32
   sharedBuf.setUint32(0, points.length, Endian.little);
