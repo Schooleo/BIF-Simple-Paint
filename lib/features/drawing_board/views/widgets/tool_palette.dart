@@ -1,21 +1,30 @@
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
+import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
+import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
+import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class ToolPalette extends StatefulWidget {
+class ToolPalette extends ConsumerStatefulWidget {
   const ToolPalette({super.key});
 
   @override
-  State<ToolPalette> createState() => _ToolPaletteState();
+  ConsumerState<ToolPalette> createState() => _ToolPaletteState();
 }
 
 const Duration _hoverDuration = Duration(milliseconds: 160);
 const Duration _selectDuration = Duration(milliseconds: 200);
 
-class _ToolPaletteState extends State<ToolPalette> {
+class _ToolPaletteState extends ConsumerState<ToolPalette> {
   static const List<IconData> _tools = <IconData>[
     Icons.near_me_outlined,
     Icons.edit_outlined,
     Icons.remove,
+  ];
+  static const List<ToolType> _toolTypes = <ToolType>[
+    ToolType.cursor,
+    ToolType.brush,
+    ToolType.eraser,
   ];
 
   static const List<_ShapeOption> _shapeOptions = <_ShapeOption>[
@@ -24,19 +33,25 @@ class _ToolPaletteState extends State<ToolPalette> {
     _ShapeOption(label: 'Circle', icon: Icons.circle_outlined),
   ];
 
-  int _selectedStrokeIndex = 0;
-  int _selectedFillIndex = 0;
-  int _selectedToolIndex = 0;
   int _selectedShapeIndex = 0;
   int? _hoveredStrokeIndex;
   int? _hoveredFillIndex;
   int? _hoveredToolIndex;
   bool _isShapeHovered = false;
-  double _strokeWidth = 2;
 
   @override
   Widget build(BuildContext context) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final ToolSelectionState toolSelection = ref.watch(
+      toolSelectionNotifierProvider,
+    );
+    final ToolSelectionNotifier toolSelectionNotifier = ref.read(
+      toolSelectionNotifierProvider.notifier,
+    );
+    final DrawingBoardNotifier drawingBoardNotifier = ref.read(
+      drawingBoardNotifierProvider.notifier,
+    );
+    final bool isCursor = toolSelection.toolType == ToolType.cursor;
     final List<Color> strokeColors = <Color>[
       colors.paletteBlue,
       colors.paletteInk,
@@ -51,6 +66,17 @@ class _ToolPaletteState extends State<ToolPalette> {
       colors.paletteRed,
       colors.paletteGreen,
     ];
+    final int selectedStrokeIndex = _indexForColor(
+      strokeColors,
+      toolSelection.currentStrokeColor,
+    );
+    final int selectedFillIndex = _indexForColor(
+      fillColors,
+      toolSelection.currentFillColor,
+    );
+    final int selectedToolIndex = _toolTypes.indexOf(toolSelection.toolType);
+    final bool isShapeSelected = toolSelection.toolType == ToolType.shape;
+    final double strokeWidth = toolSelection.currentStrokeWidth;
 
     return Align(
       alignment: Alignment.centerRight,
@@ -80,20 +106,23 @@ class _ToolPaletteState extends State<ToolPalette> {
                       child: Tooltip(
                         message: 'Stroke width',
                         child: Slider(
-                          value: _strokeWidth,
+                          value: strokeWidth,
                           min: 1,
                           max: 12,
                           onChanged: (double value) {
-                            setState(() {
-                              _strokeWidth = value;
-                            });
+                            toolSelectionNotifier.updateStrokeWidth(value);
+                            if (isCursor) {
+                              drawingBoardNotifier.updateSelectedShapeStyle(
+                                strokeWidth: value,
+                              );
+                            }
                           },
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '${_strokeWidth.round()}px',
+                      '${strokeWidth.round()}px',
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         color: colors.textSecondary,
                         fontWeight: FontWeight.w600,
@@ -107,7 +136,7 @@ class _ToolPaletteState extends State<ToolPalette> {
                 _ColorRow(
                   colors: colors,
                   swatches: strokeColors,
-                  selectedIndex: _selectedStrokeIndex,
+                  selectedIndex: selectedStrokeIndex,
                   hoveredIndex: _hoveredStrokeIndex,
                   onHover: (int? index) {
                     setState(() {
@@ -115,9 +144,13 @@ class _ToolPaletteState extends State<ToolPalette> {
                     });
                   },
                   onSelected: (int index) {
-                    setState(() {
-                      _selectedStrokeIndex = index;
-                    });
+                    final Color color = strokeColors[index];
+                    toolSelectionNotifier.updateStrokeColor(color);
+                    if (isCursor) {
+                      drawingBoardNotifier.updateSelectedShapeStyle(
+                        strokeColor: color,
+                      );
+                    }
                   },
                 ),
                 const SizedBox(height: 18),
@@ -126,7 +159,7 @@ class _ToolPaletteState extends State<ToolPalette> {
                 _ColorRow(
                   colors: colors,
                   swatches: fillColors,
-                  selectedIndex: _selectedFillIndex,
+                  selectedIndex: selectedFillIndex,
                   hoveredIndex: _hoveredFillIndex,
                   showTransparent: true,
                   onHover: (int? index) {
@@ -135,9 +168,14 @@ class _ToolPaletteState extends State<ToolPalette> {
                     });
                   },
                   onSelected: (int index) {
-                    setState(() {
-                      _selectedFillIndex = index;
-                    });
+                    final Color color = fillColors[index];
+                    toolSelectionNotifier.updateFillColor(color);
+                    if (isCursor) {
+                      drawingBoardNotifier.updateSelectedShapeStyle(
+                        fillColor: color,
+                        updateFillColor: true,
+                      );
+                    }
                   },
                 ),
                 const SizedBox(height: 18),
@@ -146,7 +184,7 @@ class _ToolPaletteState extends State<ToolPalette> {
                 Row(
                   children: <Widget>[
                     ...List<Widget>.generate(_tools.length, (int index) {
-                      final bool isSelected = _selectedToolIndex == index;
+                      final bool isSelected = selectedToolIndex == index;
                       final bool isHovered = _hoveredToolIndex == index;
                       final Color background = isSelected
                           ? colors.accentPrimary
@@ -160,7 +198,7 @@ class _ToolPaletteState extends State<ToolPalette> {
                       return Padding(
                         padding: const EdgeInsets.only(right: 12),
                         child: Tooltip(
-                          message: 'Tool ${index + 1}',
+                          message: _toolLabel(_toolTypes[index]),
                           child: MouseRegion(
                             onEnter: (_) {
                               setState(() {
@@ -188,9 +226,9 @@ class _ToolPaletteState extends State<ToolPalette> {
                               ),
                               child: InkWell(
                                 onTap: () {
-                                  setState(() {
-                                    _selectedToolIndex = index;
-                                  });
+                                  toolSelectionNotifier.selectTool(
+                                    _toolTypes[index],
+                                  );
                                 },
                                 borderRadius: BorderRadius.circular(14),
                                 child: Center(
@@ -206,7 +244,14 @@ class _ToolPaletteState extends State<ToolPalette> {
                         ),
                       );
                     }),
-                    _buildShapeMenu(context, colors),
+                    _buildShapeMenu(
+                      context,
+                      colors,
+                      isShapeSelected: isShapeSelected,
+                      onSelectShape: () {
+                        toolSelectionNotifier.selectTool(ToolType.shape);
+                      },
+                    ),
                   ],
                 ),
               ],
@@ -217,8 +262,13 @@ class _ToolPaletteState extends State<ToolPalette> {
     );
   }
 
-  Widget _buildShapeMenu(BuildContext context, AppColors colors) {
-    final bool isSelected = _selectedToolIndex == -1;
+  Widget _buildShapeMenu(
+    BuildContext context,
+    AppColors colors, {
+    required bool isShapeSelected,
+    required VoidCallback onSelectShape,
+  }) {
+    final bool isSelected = isShapeSelected;
     final Color background = isSelected
         ? colors.accentPrimary
         : _isShapeHovered
@@ -266,8 +316,8 @@ class _ToolPaletteState extends State<ToolPalette> {
             onSelected: (int index) {
               setState(() {
                 _selectedShapeIndex = index;
-                _selectedToolIndex = -1;
               });
+              onSelectShape();
             },
             itemBuilder: (BuildContext context) {
               return List<PopupMenuEntry<int>>.generate(_shapeOptions.length, (
@@ -297,6 +347,23 @@ class _ToolPaletteState extends State<ToolPalette> {
         ),
       ),
     );
+  }
+
+  int _indexForColor(List<Color> swatches, Color color) {
+    final int index = swatches.indexWhere((Color item) {
+      return item.value == color.value;
+    });
+
+    return index == -1 ? 0 : index;
+  }
+
+  String _toolLabel(ToolType type) {
+    return switch (type) {
+      ToolType.cursor => 'Select',
+      ToolType.brush => 'Brush',
+      ToolType.eraser => 'Eraser',
+      ToolType.shape => 'Shape',
+    };
   }
 }
 

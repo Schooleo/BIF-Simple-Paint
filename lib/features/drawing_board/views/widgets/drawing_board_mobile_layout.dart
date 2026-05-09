@@ -1,30 +1,62 @@
 import 'dart:ui';
 
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
+import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
+import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
+import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_board_tool_button.dart';
+import 'package:bif_simple_paint/features/drawing_board/views/widgets/interactive_canvas.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 const Duration _animationDuration = Duration(milliseconds: 180);
 
-class MobileLayout extends StatefulWidget {
+class MobileLayout extends ConsumerStatefulWidget {
   const MobileLayout({super.key});
 
   @override
-  State<MobileLayout> createState() => _MobileLayoutState();
+  ConsumerState<MobileLayout> createState() => _MobileLayoutState();
 }
 
-class _MobileLayoutState extends State<MobileLayout> {
-  bool _isSelectionMode = false;
+class _MobileLayoutState extends ConsumerState<MobileLayout> {
+  ToolType _lastNonCursorTool = ToolType.brush;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.listen<ToolSelectionState>(toolSelectionNotifierProvider, (
+      ToolSelectionState? previous,
+      ToolSelectionState next,
+    ) {
+      if (next.toolType != ToolType.cursor) {
+        _lastNonCursorTool = next.toolType;
+      }
+    });
+  }
 
   void _toggleMode() {
-    setState(() {
-      _isSelectionMode = !_isSelectionMode;
-    });
+    final ToolSelectionState toolSelection = ref.read(
+      toolSelectionNotifierProvider,
+    );
+    final ToolSelectionNotifier notifier = ref.read(
+      toolSelectionNotifierProvider.notifier,
+    );
+
+    if (toolSelection.toolType == ToolType.cursor) {
+      notifier.selectTool(_lastNonCursorTool);
+    } else {
+      _lastNonCursorTool = toolSelection.toolType;
+      notifier.selectTool(ToolType.cursor);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final ToolSelectionState toolSelection = ref.watch(
+      toolSelectionNotifierProvider,
+    );
+    final bool isSelectionMode = toolSelection.toolType == ToolType.cursor;
     final Color background = colors.backgroundCanvas;
 
     return Container(
@@ -45,9 +77,9 @@ class _MobileLayoutState extends State<MobileLayout> {
               curve: Curves.easeOutCubic,
               left: 0,
               right: 0,
-              bottom: _isSelectionMode ? 8 : 16,
+              bottom: isSelectionMode ? 8 : 16,
               child: MobileFloatingToolbars(
-                isSelectionMode: _isSelectionMode,
+                isSelectionMode: isSelectionMode,
                 onToggleMode: _toggleMode,
               ),
             ),
@@ -58,12 +90,18 @@ class _MobileLayoutState extends State<MobileLayout> {
   }
 }
 
-class MobileTopBar extends StatelessWidget {
+class MobileTopBar extends ConsumerWidget {
   const MobileTopBar({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final DrawingBoardState drawingState = ref.watch(
+      drawingBoardNotifierProvider,
+    );
+    final DrawingBoardNotifier drawingBoardNotifier = ref.read(
+      drawingBoardNotifierProvider.notifier,
+    );
     final Color background = colors.surfaceFloating;
     final Color border = colors.borderSubtle;
     final Color textColor = colors.textPrimary;
@@ -95,9 +133,25 @@ class MobileTopBar extends StatelessWidget {
               ).textTheme.titleSmall?.copyWith(color: textColor),
             ),
           ),
-          Icon(Icons.undo, color: iconColor, size: 18),
+          IconButton(
+            onPressed: drawingState.canUndo
+                ? drawingBoardNotifier.undo
+                : null,
+            icon: Icon(Icons.undo, color: iconColor, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: 'Undo',
+          ),
           const SizedBox(width: 12),
-          Icon(Icons.redo, color: iconColor, size: 18),
+          IconButton(
+            onPressed: drawingState.canRedo
+                ? drawingBoardNotifier.redo
+                : null,
+            icon: Icon(Icons.redo, color: iconColor, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: 'Redo',
+          ),
           const SizedBox(width: 12),
           Icon(Icons.more_vert, color: iconColor, size: 18),
         ],
@@ -111,17 +165,7 @@ class MobileCanvasArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final AppColors colors = Theme.of(context).extension<AppColors>()!;
-    final Color textColor = colors.textMuted;
-
-    return Center(
-      child: Text(
-        'Canvas Area',
-        style: Theme.of(
-          context,
-        ).textTheme.titleMedium?.copyWith(color: textColor),
-      ),
-    );
+    return const InteractiveCanvas();
   }
 }
 
@@ -152,7 +196,7 @@ class MobileQuickActions extends StatelessWidget {
   }
 }
 
-class MobileFloatingToolbars extends StatefulWidget {
+class MobileFloatingToolbars extends ConsumerStatefulWidget {
   const MobileFloatingToolbars({
     super.key,
     required this.isSelectionMode,
@@ -163,18 +207,27 @@ class MobileFloatingToolbars extends StatefulWidget {
   final VoidCallback onToggleMode;
 
   @override
-  State<MobileFloatingToolbars> createState() => _MobileFloatingToolbarsState();
+  ConsumerState<MobileFloatingToolbars> createState() =>
+      _MobileFloatingToolbarsState();
 }
 
-class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
-  int _selectedColorIndex = 0;
-  int _selectedToolIndex = 1;
+class _MobileFloatingToolbarsState
+    extends ConsumerState<MobileFloatingToolbars> {
   int _selectedShapeIndex = 0;
-  double _strokeWidth = 2;
 
   @override
   Widget build(BuildContext context) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final ToolSelectionState toolSelection = ref.watch(
+      toolSelectionNotifierProvider,
+    );
+    final ToolSelectionNotifier toolSelectionNotifier = ref.read(
+      toolSelectionNotifierProvider.notifier,
+    );
+    final DrawingBoardNotifier drawingBoardNotifier = ref.read(
+      drawingBoardNotifierProvider.notifier,
+    );
+    final bool isCursor = toolSelection.toolType == ToolType.cursor;
     final List<Color> paletteColors = <Color>[
       colors.paletteBlue,
       colors.paletteInk,
@@ -182,6 +235,11 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
       colors.paletteGreen,
       colors.paletteAmber,
     ];
+    final int selectedColorIndex = _indexForColor(
+      paletteColors,
+      toolSelection.currentStrokeColor,
+    );
+    final double strokeWidth = toolSelection.currentStrokeWidth;
 
     return SafeArea(
       top: false,
@@ -215,7 +273,7 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
                               ),
                               const Spacer(),
                               Text(
-                                '${_strokeWidth.round()}px',
+                                '${strokeWidth.round()}px',
                                 style: Theme.of(context).textTheme.labelSmall
                                     ?.copyWith(
                                       color: colors.textSecondary,
@@ -226,24 +284,31 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
                           ),
                           const SizedBox(height: 6),
                           Slider(
-                            value: _strokeWidth,
+                            value: strokeWidth,
                             min: 1,
                             max: 12,
                             onChanged: (double value) {
-                              setState(() {
-                                _strokeWidth = value;
-                              });
+                              toolSelectionNotifier.updateStrokeWidth(value);
+                              if (isCursor) {
+                                drawingBoardNotifier.updateSelectedShapeStyle(
+                                  strokeWidth: value,
+                                );
+                              }
                             },
                           ),
                           const SizedBox(height: 10),
                           _ColorDotRow(
                             colors: colors,
                             swatches: paletteColors,
-                            selectedIndex: _selectedColorIndex,
+                            selectedIndex: selectedColorIndex,
                             onSelected: (int index) {
-                              setState(() {
-                                _selectedColorIndex = index;
-                              });
+                              final Color color = paletteColors[index];
+                              toolSelectionNotifier.updateStrokeColor(color);
+                              if (isCursor) {
+                                drawingBoardNotifier.updateSelectedShapeStyle(
+                                  strokeColor: color,
+                                );
+                              }
                             },
                           ),
                         ],
@@ -261,45 +326,40 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
                 children: <Widget>[
                   _ToolChip(
                     icon: Icons.near_me_outlined,
-                    isSelected: _selectedToolIndex == 0,
+                    isSelected: toolSelection.toolType == ToolType.cursor,
                     colors: colors,
                     onTap: () {
-                      setState(() {
-                        _selectedToolIndex = 0;
-                      });
+                      toolSelectionNotifier.selectTool(ToolType.cursor);
                     },
                   ),
                   const SizedBox(width: 10),
                   _ToolChip(
                     icon: Icons.edit_outlined,
-                    isSelected: _selectedToolIndex == 1,
+                    isSelected: toolSelection.toolType == ToolType.brush,
                     colors: colors,
                     onTap: () {
-                      setState(() {
-                        _selectedToolIndex = 1;
-                      });
+                      toolSelectionNotifier.selectTool(ToolType.brush);
                     },
                   ),
                   const SizedBox(width: 10),
                   _ToolChip(
                     icon: Icons.remove,
-                    isSelected: _selectedToolIndex == 2,
+                    isSelected: toolSelection.toolType == ToolType.eraser,
                     colors: colors,
                     onTap: () {
-                      setState(() {
-                        _selectedToolIndex = 2;
-                      });
+                      toolSelectionNotifier.selectTool(ToolType.eraser);
                     },
                   ),
                   const SizedBox(width: 10),
                   _ShapeMenu(
                     colors: colors,
+                    isSelected: toolSelection.toolType == ToolType.shape,
                     selectedIndex: _selectedShapeIndex,
                     onSelected: (int index) {
                       setState(() {
                         _selectedShapeIndex = index;
-                        _selectedToolIndex = -1;
                       });
+                      toolSelectionNotifier.selectTool(ToolType.shape);
                     },
                   ),
                   const Spacer(),
@@ -312,9 +372,17 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
                     onTap: widget.onToggleMode,
                   ),
                   const SizedBox(width: 8),
-                  _ActionChip(icon: Icons.undo, colors: colors, onTap: () {}),
+                  _ActionChip(
+                    icon: Icons.undo,
+                    colors: colors,
+                    onTap: drawingBoardNotifier.undo,
+                  ),
                   const SizedBox(width: 8),
-                  _ActionChip(icon: Icons.redo, colors: colors, onTap: () {}),
+                  _ActionChip(
+                    icon: Icons.redo,
+                    colors: colors,
+                    onTap: drawingBoardNotifier.redo,
+                  ),
                 ],
               ),
             ),
@@ -322,6 +390,14 @@ class _MobileFloatingToolbarsState extends State<MobileFloatingToolbars> {
         ),
       ),
     );
+  }
+
+  int _indexForColor(List<Color> swatches, Color color) {
+    final int index = swatches.indexWhere((Color item) {
+      return item.value == color.value;
+    });
+
+    return index == -1 ? 0 : index;
   }
 }
 
@@ -492,11 +568,13 @@ class _ActionChip extends StatelessWidget {
 class _ShapeMenu extends StatelessWidget {
   const _ShapeMenu({
     required this.colors,
+    required this.isSelected,
     required this.selectedIndex,
     required this.onSelected,
   });
 
   final AppColors colors;
+  final bool isSelected;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
@@ -534,7 +612,7 @@ class _ShapeMenu extends StatelessWidget {
       child: AbsorbPointer(
         child: _ToolChip(
           icon: selected.icon,
-          isSelected: false,
+          isSelected: isSelected,
           colors: colors,
           onTap: () {},
         ),
