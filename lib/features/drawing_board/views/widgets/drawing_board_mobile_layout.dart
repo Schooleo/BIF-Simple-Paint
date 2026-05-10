@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
@@ -6,10 +7,14 @@ import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_board_tool_button.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/interactive_canvas.dart';
+import 'package:gal/gal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 const Duration _animationDuration = Duration(milliseconds: 180);
+typedef CaptureImageCallback = Future<Uint8List?> Function({bool asJpeg});
+
+enum _ExportFormat { png, jpeg }
 
 class MobileLayout extends ConsumerStatefulWidget {
   const MobileLayout({super.key});
@@ -20,6 +25,8 @@ class MobileLayout extends ConsumerStatefulWidget {
 
 class _MobileLayoutState extends ConsumerState<MobileLayout> {
   ToolType _lastNonCursorTool = ToolType.brush;
+  final GlobalKey<CanvasCapture> _canvasExportKey =
+      GlobalKey<CanvasCapture>();
 
   @override
   void initState() {
@@ -50,6 +57,11 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
     }
   }
 
+  Future<Uint8List?> _captureImage({bool asJpeg = false}) async {
+    final state = _canvasExportKey.currentState;
+    return state?.captureImage(asJpeg: asJpeg);
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
@@ -64,12 +76,14 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
       child: SafeArea(
         child: Stack(
           children: <Widget>[
-            const Positioned.fill(child: MobileCanvasArea()),
-            const Positioned(
+            Positioned.fill(
+              child: MobileCanvasArea(canvasKey: _canvasExportKey),
+            ),
+            Positioned(
               top: 12,
               left: 16,
               right: 16,
-              child: MobileTopBar(),
+              child: MobileTopBar(onCaptureImage: _captureImage),
             ),
             const Positioned(right: 16, top: 120, child: MobileQuickActions()),
             AnimatedPositioned(
@@ -91,7 +105,9 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
 }
 
 class MobileTopBar extends ConsumerWidget {
-  const MobileTopBar({super.key});
+  const MobileTopBar({super.key, required this.onCaptureImage});
+
+  final CaptureImageCallback onCaptureImage;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -153,19 +169,80 @@ class MobileTopBar extends ConsumerWidget {
             tooltip: 'Redo',
           ),
           const SizedBox(width: 12),
+          IconButton(
+            onPressed: () => _showExportSheet(context),
+            icon: Icon(Icons.save_alt, color: iconColor, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: 'Export',
+          ),
+          const SizedBox(width: 12),
           Icon(Icons.more_vert, color: iconColor, size: 18),
         ],
       ),
     );
   }
+
+  Future<void> _showExportSheet(BuildContext context) async {
+    final selection = await showModalBottomSheet<_ExportFormat>(
+      context: context,
+      useSafeArea: true,
+      builder: (sheetContext) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('Save as PNG'),
+              onTap: () => Navigator.of(sheetContext).pop(_ExportFormat.png),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_outlined),
+              title: const Text('Save as JPEG'),
+              onTap: () => Navigator.of(sheetContext).pop(_ExportFormat.jpeg),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (selection == null) {
+      return;
+    }
+
+    final bytes = await onCaptureImage(
+      asJpeg: selection == _ExportFormat.jpeg,
+    );
+    if (!context.mounted) {
+      return;
+    }
+
+    if (bytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Export failed.')),
+      );
+      return;
+    }
+
+    await Gal.putImageBytes(bytes);
+    if (!context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Saved to gallery!')),
+    );
+  }
 }
 
 class MobileCanvasArea extends StatelessWidget {
-  const MobileCanvasArea({super.key});
+  const MobileCanvasArea({super.key, required this.canvasKey});
+
+  final GlobalKey<CanvasCapture> canvasKey;
 
   @override
   Widget build(BuildContext context) {
-    return const InteractiveCanvas();
+    return InteractiveCanvas(key: canvasKey);
   }
 }
 

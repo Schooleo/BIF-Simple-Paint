@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:bif_simple_paint/core/utils/binary_serializer.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
@@ -128,6 +131,22 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
         preferredId: state.selectedShapeId,
       ),
     );
+  }
+
+  Future<void> loadFromBytes(Uint8List data) async {
+    try {
+      final decoded = await decodeShapes(data);
+      final shapes = decoded.shapes;
+
+      _transformSnapshot = null;
+      _shapeIdCounter = _nextIdFromShapes(shapes);
+
+      state = DrawingBoardState.initial().copyWith(
+        finalizedShapes: _cloneSnapshot(shapes),
+      );
+    } on FormatException {
+      return;
+    }
   }
 
   void selectShape(String? id) {
@@ -378,6 +397,23 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
     }
 
     return shapes.any((shape) => shape.id == preferredId) ? preferredId : null;
+  }
+
+  int _nextIdFromShapes(List<BaseShape> shapes) {
+    var maxId = -1;
+    for (final shape in shapes) {
+      final id = shape.id;
+      if (!id.startsWith('shape_')) {
+        continue;
+      }
+
+      final value = int.tryParse(id.substring(6));
+      if (value != null && value > maxId) {
+        maxId = value;
+      }
+    }
+
+    return maxId + 1;
   }
 
   String _nextShapeId() => 'shape_${_shapeIdCounter++}';
