@@ -1,10 +1,14 @@
 import 'dart:math';
+import 'dart:ui' as ui;
 
+import 'package:bif_simple_paint/core/theme/app_colors.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
+import 'package:image/image.dart' as img;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
@@ -22,11 +26,17 @@ class InteractiveCanvas extends ConsumerStatefulWidget {
   ConsumerState<InteractiveCanvas> createState() => _InteractiveCanvasState();
 }
 
-class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas> {
+mixin CanvasCapture on State<InteractiveCanvas> {
+  Future<Uint8List?> captureImage({bool asJpeg = false});
+}
+
+class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
+    with CanvasCapture {
   _DragMode _dragMode = _DragMode.none;
   ResizeCorner? _resizeCorner;
   bool _isShiftPressed = false;
   final FocusNode _focusNode = FocusNode();
+  final GlobalKey _canvasKey = GlobalKey();
 
   @override
   void dispose() {
@@ -48,12 +58,63 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas> {
         onPanStart: _handlePanStart,
         onPanUpdate: _handlePanUpdate,
         onPanEnd: _handlePanEnd,
-        child: CustomPaint(
-          painter: CanvasPainter(state: drawingState),
-          child: const SizedBox.expand(),
+        child: RepaintBoundary(
+          key: _canvasKey,
+          child: CustomPaint(
+            painter: CanvasPainter(state: drawingState),
+            child: const SizedBox.expand(),
+          ),
         ),
       ),
     );
+  }
+
+  @override
+  Future<Uint8List?> captureImage({bool asJpeg = false}) async {
+    final pixelRatio = View.of(context).devicePixelRatio;
+    final background =
+        Theme.of(context).extension<AppColors>()?.backgroundCanvas ??
+            Colors.white;
+    final boundaryContext = _canvasKey.currentContext;
+    if (boundaryContext == null) {
+      return null;
+    }
+
+    final boundary = boundaryContext.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) {
+      return null;
+    }
+
+    final image = await boundary.toImage(pixelRatio: pixelRatio);
+
+    if (!asJpeg) {
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    }
+
+    final pngData = await image.toByteData(format: ui.ImageByteFormat.png);
+    if (pngData == null) {
+      return null;
+    }
+
+    final overlay = img.decodePng(pngData.buffer.asUint8List());
+    if (overlay == null) {
+      return null;
+    }
+
+    final composed = img.Image(width: image.width, height: image.height);
+    img.fill(
+      composed,
+      color: img.ColorRgba8(
+        (background.r * 255.0).round().clamp(0, 255),
+        (background.g * 255.0).round().clamp(0, 255),
+        (background.b * 255.0).round().clamp(0, 255),
+        255,
+      ),
+    );
+    img.compositeImage(composed, overlay);
+
+    return Uint8List.fromList(img.encodeJpg(composed, quality: 92));
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {

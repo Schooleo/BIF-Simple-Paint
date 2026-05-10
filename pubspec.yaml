@@ -37,6 +37,11 @@ dependencies:
   flutter_riverpod: ^2.6.1
   riverpod_annotation: ^2.6.1
   meta: ^1.17.0
+  gal: ^2.3.2
+  desktop_drop: ^0.7.1
+  cross_file: ^0.3.5+2
+  image: ^4.8.0
+  mocktail: ^1.0.5
 
 dev_dependencies:
   flutter_test:
