@@ -16,10 +16,27 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(const ProviderScope(child: BifPaintApp()));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.byType(MaterialApp), findsOneWidget);
     expect(find.byType(CanvasListScreen), findsOneWidget);
     expect(find.byType(UncontrolledProviderScope), findsWidgets);
+  });
+
+  testWidgets('BIF Paint app lays out on desktop widths without overflow', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(952, 1016);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const ProviderScope(child: BifPaintApp()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(CanvasListScreen), findsOneWidget);
   });
 }

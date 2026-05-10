@@ -38,6 +38,7 @@ class CanvasArea extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final drawingState = ref.watch(drawingBoardNotifierProvider);
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
     final Color background = colors.backgroundCanvas;
     final Color textColor = colors.textMuted;
@@ -71,7 +72,7 @@ class CanvasArea extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.only(top: 16),
                 child: Text(
-                  'Drawing Board',
+                  drawingState.currentCanvasName,
                   style: Theme.of(
                     context,
                   ).textTheme.titleMedium?.copyWith(color: textColor),

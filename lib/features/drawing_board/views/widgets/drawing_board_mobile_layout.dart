@@ -25,8 +25,7 @@ class MobileLayout extends ConsumerStatefulWidget {
 
 class _MobileLayoutState extends ConsumerState<MobileLayout> {
   ToolType _lastNonCursorTool = ToolType.brush;
-  final GlobalKey<CanvasCapture> _canvasExportKey =
-      GlobalKey<CanvasCapture>();
+  final GlobalKey<CanvasCapture> _canvasExportKey = GlobalKey<CanvasCapture>();
 
   @override
   void initState() {
@@ -143,16 +142,14 @@ class MobileTopBar extends ConsumerWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Untitled',
+              drawingState.currentCanvasName,
               style: Theme.of(
                 context,
               ).textTheme.titleSmall?.copyWith(color: textColor),
             ),
           ),
           IconButton(
-            onPressed: drawingState.canUndo
-                ? drawingBoardNotifier.undo
-                : null,
+            onPressed: drawingState.canUndo ? drawingBoardNotifier.undo : null,
             icon: Icon(Icons.undo, color: iconColor, size: 18),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
@@ -160,9 +157,7 @@ class MobileTopBar extends ConsumerWidget {
           ),
           const SizedBox(width: 12),
           IconButton(
-            onPressed: drawingState.canRedo
-                ? drawingBoardNotifier.redo
-                : null,
+            onPressed: drawingState.canRedo ? drawingBoardNotifier.redo : null,
             icon: Icon(Icons.redo, color: iconColor, size: 18),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
@@ -210,17 +205,15 @@ class MobileTopBar extends ConsumerWidget {
       return;
     }
 
-    final bytes = await onCaptureImage(
-      asJpeg: selection == _ExportFormat.jpeg,
-    );
+    final bytes = await onCaptureImage(asJpeg: selection == _ExportFormat.jpeg);
     if (!context.mounted) {
       return;
     }
 
     if (bytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Export failed.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Export failed.')));
       return;
     }
 
@@ -229,9 +222,9 @@ class MobileTopBar extends ConsumerWidget {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Saved to gallery!')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Saved to gallery!')));
   }
 }
 
@@ -290,7 +283,6 @@ class MobileFloatingToolbars extends ConsumerStatefulWidget {
 
 class _MobileFloatingToolbarsState
     extends ConsumerState<MobileFloatingToolbars> {
-
   @override
   Widget build(BuildContext context) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
@@ -315,9 +307,7 @@ class _MobileFloatingToolbarsState
       paletteColors,
       toolSelection.currentStrokeColor,
     );
-    final int selectedShapeIndex = _indexForShapeType(
-      toolSelection.shapeType,
-    );
+    final int selectedShapeIndex = _indexForShapeType(toolSelection.shapeType);
     final double strokeWidth = toolSelection.currentStrokeWidth;
 
     return SafeArea(
@@ -435,8 +425,9 @@ class _MobileFloatingToolbarsState
                     isSelected: toolSelection.toolType == ToolType.shape,
                     selectedIndex: selectedShapeIndex,
                     onSelected: (int index) {
-                      final ShapeType shapeType =
-                          _ShapeMenu.shapeTypeForIndex(index);
+                      final ShapeType shapeType = _ShapeMenu.shapeTypeForIndex(
+                        index,
+                      );
                       toolSelectionNotifier.selectShapeType(shapeType);
                       toolSelectionNotifier.selectTool(ToolType.shape);
                     },

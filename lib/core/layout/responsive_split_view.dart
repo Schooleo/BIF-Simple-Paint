@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 
 import '../theme/app_colors.dart';
 
@@ -45,7 +46,8 @@ class _ResponsiveSplitViewState extends State<ResponsiveSplitView> {
       return widget.mobile;
     }
 
-    final AppColors colors = Theme.of(context).extension<AppColors>() ??
+    final AppColors colors =
+        Theme.of(context).extension<AppColors>() ??
         (Theme.of(context).brightness == Brightness.dark
             ? AppColors.dark
             : AppColors.light);
@@ -56,15 +58,14 @@ class _ResponsiveSplitViewState extends State<ResponsiveSplitView> {
         final double targetSidebarWidth = _isCollapsed
             ? widget.sidebarCollapsedWidth
             : widget.sidebarWidth;
-        final double contentWidth = maxWidth - targetSidebarWidth;
-        final double safeContentWidth = contentWidth > 0 ? contentWidth : 0;
+        final double safeSidebarWidth = math.min(targetSidebarWidth, maxWidth);
 
         return Row(
           children: <Widget>[
             AnimatedContainer(
               duration: _animationDuration,
               curve: Curves.easeOutCubic,
-              width: targetSidebarWidth,
+              width: safeSidebarWidth,
               decoration: BoxDecoration(
                 color: colors.backgroundSidebar,
                 border: Border(right: BorderSide(color: colors.borderSubtle)),
@@ -90,11 +91,12 @@ class _ResponsiveSplitViewState extends State<ResponsiveSplitView> {
                 ],
               ),
             ),
-            AnimatedContainer(
-              duration: _animationDuration,
-              curve: Curves.easeOutCubic,
-              width: safeContentWidth,
-              child: widget.content,
+            Expanded(
+              child: AnimatedContainer(
+                duration: _animationDuration,
+                curve: Curves.easeOutCubic,
+                child: ClipRect(child: widget.content),
+              ),
             ),
           ],
         );
