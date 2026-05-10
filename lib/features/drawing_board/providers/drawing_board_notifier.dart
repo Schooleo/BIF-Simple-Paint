@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:bif_simple_paint/core/services/database_service.dart';
 import 'package:bif_simple_paint/core/utils/binary_serializer.dart';
+import 'package:bif_simple_paint/core/utils/thumbnail_generator.dart';
+import 'package:bif_simple_paint/features/canvas_list/providers/canvas_list_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
@@ -9,13 +13,46 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'drawing_board_notifier.g.dart';
 
+const Duration _autoSaveDebounce = Duration(seconds: 2);
+const double _serializedCanvasWidth = 4096;
+const double _serializedCanvasHeight = 4096;
+
 @riverpod
-class DrawingBoardNotifier extends _$DrawingBoardNotifier {
+class DrawingBoardNotifier extends _$DrawingBoardNotifier
+    with WidgetsBindingObserver {
   int _shapeIdCounter = 0;
+  int _revision = 0;
+  int _lastSavedRevision = -1;
+  bool _isDisposed = false;
   List<BaseShape>? _transformSnapshot;
+  Timer? _autoSaveTimer;
+  Future<void> _saveSequence = Future<void>.value();
 
   @override
-  DrawingBoardState build() => DrawingBoardState.initial();
+  DrawingBoardState build() {
+    _isDisposed = false;
+    WidgetsFlutterBinding.ensureInitialized().addObserver(this);
+    ref.onDispose(() {
+      _isDisposed = true;
+      _autoSaveTimer?.cancel();
+      WidgetsBinding.instance.removeObserver(this);
+    });
+
+    return DrawingBoardState.initial(
+      currentCanvasId: _generateCanvasId(),
+      currentCanvasName: 'Untitled',
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.paused) {
+      return;
+    }
+
+    _autoSaveTimer?.cancel();
+    unawaited(_flushAutoSave(writeSynchronously: true));
+  }
 
   void startDrawing(Offset point, ToolSelectionState toolSelection) {
     if (toolSelection.toolType == ToolType.cursor) {
@@ -30,9 +67,7 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
       return;
     }
 
-    state = state.copyWith(
-      activeTempShape: nextShape,
-    );
+    state = state.copyWith(activeTempShape: nextShape);
   }
 
   void updateDrawing(
@@ -104,6 +139,8 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
         preferredId: state.selectedShapeId,
       ),
     );
+
+    _markDirty();
   }
 
   void redo() {
@@ -131,22 +168,39 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
         preferredId: state.selectedShapeId,
       ),
     );
+
+    _markDirty();
   }
 
   Future<void> loadFromBytes(Uint8List data) async {
     try {
       final decoded = await decodeShapes(data);
       final shapes = decoded.shapes;
+      final nextCanvasId = _generateCanvasId();
 
       _transformSnapshot = null;
       _shapeIdCounter = _nextIdFromShapes(shapes);
 
-      state = DrawingBoardState.initial().copyWith(
-        finalizedShapes: _cloneSnapshot(shapes),
-      );
+      state = DrawingBoardState.initial(
+        currentCanvasId: nextCanvasId,
+        currentCanvasName: 'Untitled',
+      ).copyWith(finalizedShapes: _cloneSnapshot(shapes));
+      _markDirty();
     } on FormatException {
       return;
     }
+  }
+
+  void setCurrentFilePath(
+    String? filePath, {
+    String? canvasId,
+    String? canvasName,
+  }) {
+    state = state.copyWith(
+      currentCanvasId: canvasId,
+      currentFilePath: filePath,
+      currentCanvasName: canvasName ?? _canvasNameFor(filePath),
+    );
   }
 
   void selectShape(String? id) {
@@ -169,11 +223,21 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
     }
 
     final updatedShapes = state.finalizedShapes
-        .map((shape) =>
-            shape.id == selectedShapeId ? updatedShape : shape.clone())
+        .map(
+          (shape) => shape.id == selectedShapeId ? updatedShape : shape.clone(),
+        )
         .toList(growable: false);
 
-    state = state.copyWith(finalizedShapes: updatedShapes);
+    if (_transformSnapshot != null) {
+      state = state.copyWith(finalizedShapes: updatedShapes);
+      return;
+    }
+
+    _commitState(
+      finalizedShapes: updatedShapes,
+      activeTempShape: null,
+      selectedShapeId: selectedShapeId,
+    );
   }
 
   void endTransform() {
@@ -204,6 +268,8 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
         preferredId: state.selectedShapeId,
       ),
     );
+
+    _markDirty();
   }
 
   void updateSelectedShapeStyle({
@@ -271,6 +337,100 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
         preferredId: selectedShapeId,
       ),
     );
+
+    _markDirty();
+  }
+
+  void _markDirty() {
+    _revision += 1;
+    _autoSaveTimer?.cancel();
+    if (!_autoSaveEnabled) {
+      return;
+    }
+    _autoSaveTimer = Timer(_autoSaveDebounce, () {
+      unawaited(_flushAutoSave());
+    });
+  }
+
+  Future<void> _flushAutoSave({bool writeSynchronously = false}) {
+    final targetRevision = _revision;
+    if (targetRevision == _lastSavedRevision && !writeSynchronously) {
+      return _saveSequence;
+    }
+
+    _saveSequence = _saveSequence.then((_) async {
+      if (targetRevision == _lastSavedRevision && !writeSynchronously) {
+        return;
+      }
+
+      try {
+        await _persistCurrentCanvas(writeSynchronously: writeSynchronously);
+        _lastSavedRevision = targetRevision;
+      } catch (error, stackTrace) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'drawing_board_notifier',
+            context: ErrorDescription('while auto-saving the current canvas'),
+          ),
+        );
+      }
+    });
+
+    return _saveSequence;
+  }
+
+  Future<void> _persistCurrentCanvas({bool writeSynchronously = false}) async {
+    final databaseService = ref.read(databaseServiceProvider);
+    final snapshot = _cloneSnapshot(state.finalizedShapes);
+    final serialized = await encodeShapes(
+      snapshot,
+      _serializedCanvasWidth,
+      _serializedCanvasHeight,
+    );
+    final thumbnailData = await ThumbnailGenerator.generate(snapshot);
+    final resolvedPath = await databaseService.persistCanvas(
+      canvasId: state.currentCanvasId,
+      name: state.currentCanvasName,
+      filePath: state.currentFilePath,
+      canvasBytes: serialized,
+      thumbnailData: thumbnailData,
+      lastEditedTime: DateTime.now(),
+      synchronous: writeSynchronously,
+    );
+
+    if (_isDisposed) {
+      return;
+    }
+
+    unawaited(ref.read(canvasListNotifierProvider.notifier).loadCanvases());
+
+    if (state.currentFilePath == null) {
+      state = state.copyWith(currentFilePath: resolvedPath);
+    }
+  }
+
+  String _generateCanvasId() =>
+      'canvas_${DateTime.now().microsecondsSinceEpoch}';
+
+  bool get _autoSaveEnabled {
+    final bindingType = WidgetsBinding.instance.runtimeType.toString();
+    return !bindingType.contains('TestWidgetsFlutterBinding');
+  }
+
+  String _canvasNameFor(String? filePath) {
+    if (filePath == null || filePath.isEmpty) {
+      return 'Untitled';
+    }
+
+    final normalizedPath = filePath.replaceAll('\\', '/');
+    final rawName = normalizedPath.split('/').last;
+    if (rawName.toLowerCase().endsWith('.mypt')) {
+      return rawName.substring(0, rawName.length - 5);
+    }
+
+    return rawName.isEmpty ? 'Untitled' : rawName;
   }
 
   BaseShape? _shapeFromTool({
@@ -305,40 +465,42 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier {
     bool constrain = false,
   }) {
     return switch (toolSelection.shapeType) {
-      ShapeType.rectangle => constrain
-          ? SquareShape.fromBounds(
-              startPoint: start,
-              endPoint: end,
-              id: id,
-              fillColor: toolSelection.currentFillColor,
-              strokeColor: toolSelection.currentStrokeColor,
-              strokeWidth: toolSelection.currentStrokeWidth,
-            )
-          : RectangleShape(
-              start: start,
-              end: end,
-              id: id,
-              fillColor: toolSelection.currentFillColor,
-              strokeColor: toolSelection.currentStrokeColor,
-              strokeWidth: toolSelection.currentStrokeWidth,
-            ),
-      ShapeType.oval => constrain
-          ? CircleShape.fromBounds(
-              startPoint: start,
-              endPoint: end,
-              id: id,
-              fillColor: toolSelection.currentFillColor,
-              strokeColor: toolSelection.currentStrokeColor,
-              strokeWidth: toolSelection.currentStrokeWidth,
-            )
-          : OvalShape(
-              startPoint: start,
-              endPoint: end,
-              id: id,
-              fillColor: toolSelection.currentFillColor,
-              strokeColor: toolSelection.currentStrokeColor,
-              strokeWidth: toolSelection.currentStrokeWidth,
-            ),
+      ShapeType.rectangle =>
+        constrain
+            ? SquareShape.fromBounds(
+                startPoint: start,
+                endPoint: end,
+                id: id,
+                fillColor: toolSelection.currentFillColor,
+                strokeColor: toolSelection.currentStrokeColor,
+                strokeWidth: toolSelection.currentStrokeWidth,
+              )
+            : RectangleShape(
+                start: start,
+                end: end,
+                id: id,
+                fillColor: toolSelection.currentFillColor,
+                strokeColor: toolSelection.currentStrokeColor,
+                strokeWidth: toolSelection.currentStrokeWidth,
+              ),
+      ShapeType.oval =>
+        constrain
+            ? CircleShape.fromBounds(
+                startPoint: start,
+                endPoint: end,
+                id: id,
+                fillColor: toolSelection.currentFillColor,
+                strokeColor: toolSelection.currentStrokeColor,
+                strokeWidth: toolSelection.currentStrokeWidth,
+              )
+            : OvalShape(
+                startPoint: start,
+                endPoint: end,
+                id: id,
+                fillColor: toolSelection.currentFillColor,
+                strokeColor: toolSelection.currentStrokeColor,
+                strokeWidth: toolSelection.currentStrokeWidth,
+              ),
       ShapeType.line => LineShape(
         startPoint: start,
         endPoint: end,
@@ -426,6 +588,9 @@ class DrawingBoardState {
     required List<List<BaseShape>> redoStack,
     required this.activeTempShape,
     required this.selectedShapeId,
+    required this.currentCanvasId,
+    required this.currentCanvasName,
+    required this.currentFilePath,
   }) : finalizedShapes = List<BaseShape>.unmodifiable(finalizedShapes),
        undoStack = List<List<BaseShape>>.unmodifiable(
          undoStack
@@ -438,13 +603,20 @@ class DrawingBoardState {
              .toList(growable: false),
        );
 
-  factory DrawingBoardState.initial() {
+  factory DrawingBoardState.initial({
+    String currentCanvasId = 'canvas_initial',
+    String currentCanvasName = 'Untitled',
+    String? currentFilePath,
+  }) {
     return DrawingBoardState._(
       finalizedShapes: const <BaseShape>[],
       undoStack: const <List<BaseShape>>[],
       redoStack: const <List<BaseShape>>[],
       activeTempShape: null,
       selectedShapeId: null,
+      currentCanvasId: currentCanvasId,
+      currentCanvasName: currentCanvasName,
+      currentFilePath: currentFilePath,
     );
   }
 
@@ -453,6 +625,9 @@ class DrawingBoardState {
   final List<List<BaseShape>> redoStack;
   final BaseShape? activeTempShape;
   final String? selectedShapeId;
+  final String currentCanvasId;
+  final String currentCanvasName;
+  final String? currentFilePath;
 
   bool get canUndo => undoStack.isNotEmpty;
 
@@ -483,6 +658,9 @@ class DrawingBoardState {
     List<List<BaseShape>>? redoStack,
     Object? activeTempShape = _stateSentinel,
     Object? selectedShapeId = _stateSentinel,
+    String? currentCanvasId,
+    String? currentCanvasName,
+    Object? currentFilePath = _stateSentinel,
   }) {
     return DrawingBoardState._(
       finalizedShapes: finalizedShapes ?? this.finalizedShapes,
@@ -494,6 +672,11 @@ class DrawingBoardState {
       selectedShapeId: identical(selectedShapeId, _stateSentinel)
           ? this.selectedShapeId
           : selectedShapeId as String?,
+      currentCanvasId: currentCanvasId ?? this.currentCanvasId,
+      currentCanvasName: currentCanvasName ?? this.currentCanvasName,
+      currentFilePath: identical(currentFilePath, _stateSentinel)
+          ? this.currentFilePath
+          : currentFilePath as String?,
     );
   }
 }

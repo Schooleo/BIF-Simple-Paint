@@ -1,15 +1,35 @@
 import 'package:bif_simple_paint/core/routing/app_router.dart';
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
+import 'package:bif_simple_paint/features/canvas_list/models/canvas_metadata.dart';
+import 'package:bif_simple_paint/features/canvas_list/providers/canvas_list_notifier.dart';
+import 'package:bif_simple_paint/features/canvas_list/repositories/canvas_list_repository.dart';
+import 'package:bif_simple_paint/features/canvas_list/views/widgets/canvas_list_item.dart';
+import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class CanvasListScreen extends StatelessWidget {
+class CanvasListScreen extends ConsumerStatefulWidget {
   const CanvasListScreen({super.key});
+
+  @override
+  ConsumerState<CanvasListScreen> createState() => _CanvasListScreenState();
+}
+
+class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.microtask(
+      () => ref.read(canvasListNotifierProvider.notifier).loadCanvases(),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
     final Color background = colors.backgroundPrimary;
     final Color titleColor = colors.textPrimary;
+    final canvasState = ref.watch(canvasListNotifierProvider);
 
     return Scaffold(
       backgroundColor: background,
@@ -29,38 +49,35 @@ class CanvasListScreen extends StatelessWidget {
               const _CanvasSearchField(),
               const SizedBox(height: 16),
               Expanded(
-                child: ListView(
-                  children: <Widget>[
-                    _FileCard(
-                      fileName: 'Diagram_01.bif',
-                      updatedLabel: 'Edited 2 hrs ago',
-                      onTap: () {
-                        Navigator.of(
-                          context,
-                        ).pushNamed(AppRouter.drawingBoardPath);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _FileCard(
-                      fileName: 'App_Wireframe.bif',
-                      updatedLabel: 'Edited yesterday',
-                      onTap: () {
-                        Navigator.of(
-                          context,
-                        ).pushNamed(AppRouter.drawingBoardPath);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _FileCard(
-                      fileName: 'Untitled_Artwork.bif',
-                      updatedLabel: 'Edited last week',
-                      onTap: () {
-                        Navigator.of(
-                          context,
-                        ).pushNamed(AppRouter.drawingBoardPath);
-                      },
-                    ),
-                  ],
+                child: Builder(
+                  builder: (context) {
+                    if (canvasState.isLoading && canvasState.canvases.isEmpty) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final canvases = canvasState.filteredCanvases;
+                    if (canvases.isEmpty) {
+                      return const _EmptyCanvasState();
+                    }
+
+                    return RefreshIndicator(
+                      onRefresh: () => ref
+                          .read(canvasListNotifierProvider.notifier)
+                          .loadCanvases(),
+                      child: ListView.separated(
+                        itemCount: canvases.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final metadata = canvases[index];
+                          return CanvasListItem(
+                            metadata: metadata,
+                            onTap: () => _openCanvas(context, metadata),
+                            onDelete: () => _deleteCanvas(context, metadata),
+                          );
+                        },
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -69,21 +86,81 @@ class CanvasListScreen extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _openCanvas(
+    BuildContext context,
+    CanvasMetadata metadata,
+  ) async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final shouldNavigate = MediaQuery.sizeOf(context).width < 800;
+
+    try {
+      final repository = ref.read(canvasListRepositoryProvider);
+      final bytes = await repository.loadCanvasBytes(metadata.filePath);
+      if (!mounted) {
+        return;
+      }
+
+      final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
+      await drawingNotifier.loadFromBytes(bytes);
+      drawingNotifier.setCurrentFilePath(
+        metadata.filePath,
+        canvasId: metadata.id,
+        canvasName: metadata.name,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (shouldNavigate) {
+        navigator.pushNamed(AppRouter.drawingBoardPath);
+      }
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      messenger.showSnackBar(
+        SnackBar(content: Text('Unable to open ${metadata.name}.')),
+      );
+    }
+  }
+
+  Future<void> _deleteCanvas(
+    BuildContext context,
+    CanvasMetadata metadata,
+  ) async {
+    await ref
+        .read(canvasListNotifierProvider.notifier)
+        .deleteCanvas(metadata.id);
+    if (!context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${metadata.name} removed from recent projects.')),
+    );
+  }
 }
 
-class _CanvasSearchField extends StatelessWidget {
+class _CanvasSearchField extends ConsumerWidget {
   const _CanvasSearchField();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
     final Color background = colors.surfaceSecondary;
     final Color border = colors.borderSubtle;
     final Color iconColor = colors.iconPrimary;
     final Color hintColor = colors.textMuted;
     final Color textColor = colors.textPrimary;
+    final canvasState = ref.watch(canvasListNotifierProvider);
 
-    return TextField(
+    return TextFormField(
+      onChanged: ref.read(canvasListNotifierProvider.notifier).setSearchQuery,
+      initialValue: canvasState.searchQuery,
       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: textColor),
       decoration: InputDecoration(
         isDense: true,
@@ -111,56 +188,15 @@ class _CanvasSearchField extends StatelessWidget {
   }
 }
 
-class _FileCard extends StatelessWidget {
-  const _FileCard({
-    required this.fileName,
-    required this.updatedLabel,
-    required this.onTap,
-  });
-
-  final String fileName;
-  final String updatedLabel;
-  final VoidCallback onTap;
+class _EmptyCanvasState extends StatelessWidget {
+  const _EmptyCanvasState();
 
   @override
   Widget build(BuildContext context) {
-    final AppColors colors = Theme.of(context).extension<AppColors>()!;
-    final Color background = colors.surfacePrimary;
-    final Color border = colors.borderSubtle;
-    final Color titleColor = colors.textPrimary;
-    final Color subtitleColor = colors.textMuted;
-
-    return Material(
-      color: background,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            border: Border.all(color: border),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                fileName,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(color: titleColor),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                updatedLabel,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: subtitleColor),
-              ),
-            ],
-          ),
-        ),
+    return Center(
+      child: Text(
+        'No saved canvases yet.',
+        style: Theme.of(context).textTheme.bodyMedium,
       ),
     );
   }
