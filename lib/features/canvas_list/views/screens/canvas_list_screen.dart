@@ -60,23 +60,40 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
                       return const _EmptyCanvasState();
                     }
 
-                    return RefreshIndicator(
-                      onRefresh: () => ref
-                          .read(canvasListNotifierProvider.notifier)
-                          .loadCanvases(),
-                      child: ListView.separated(
-                        itemCount: canvases.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final metadata = canvases[index];
-                          final viewData = metadata.toListItemData();
-                          return CanvasListItem(
-                            viewData: viewData,
-                            onTap: () => _openCanvas(context, metadata),
-                            onDelete: () => _deleteCanvas(context, metadata),
-                          );
-                        },
-                      ),
+                    final viewDataList = canvases
+                        .map((metadata) => metadata.toListItemData())
+                        .toList(growable: false);
+
+                    return Stack(
+                      children: <Widget>[
+                        RefreshIndicator(
+                          onRefresh: () => ref
+                              .read(canvasListNotifierProvider.notifier)
+                              .loadCanvases(),
+                          child: ListView.separated(
+                            itemCount: canvases.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final metadata = canvases[index];
+                              final viewData = viewDataList[index];
+                              return CanvasListItem(
+                                viewData: viewData,
+                                onTap: () => _openCanvas(context, metadata),
+                                onDelete: () =>
+                                    _deleteCanvas(context, metadata),
+                              );
+                            },
+                          ),
+                        ),
+                        if (canvasState.isLoading)
+                          const Positioned(
+                            left: 0,
+                            right: 0,
+                            top: 0,
+                            child: LinearProgressIndicator(),
+                          ),
+                      ],
                     );
                   },
                 ),

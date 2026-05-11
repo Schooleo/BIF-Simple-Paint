@@ -37,7 +37,16 @@ class CanvasListItem extends StatelessWidget {
                           color: theme.colorScheme.surfaceContainerHighest,
                           child: const Icon(Icons.brush_outlined),
                         )
-                      : Image.memory(thumbnailData, fit: BoxFit.cover),
+                      : RepaintBoundary(
+                          child: Image.memory(
+                            thumbnailData,
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                            cacheWidth: 96,
+                            cacheHeight: 96,
+                            filterQuality: FilterQuality.medium,
+                          ),
+                        ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -54,14 +63,14 @@ class CanvasListItem extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _formatLastEdited(viewData.lastEditedTime),
+                      viewData.editedLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall,
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      viewData.filePath,
+                      viewData.fileName,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
@@ -85,19 +94,5 @@ class CanvasListItem extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _formatLastEdited(DateTime dateTime) {
-    final difference = DateTime.now().difference(dateTime);
-    if (difference.inMinutes < 1) {
-      return 'Edited just now';
-    }
-    if (difference.inHours < 1) {
-      return 'Edited ${difference.inMinutes} min ago';
-    }
-    if (difference.inDays < 1) {
-      return 'Edited ${difference.inHours} hr ago';
-    }
-    return 'Edited ${difference.inDays} day${difference.inDays == 1 ? '' : 's'} ago';
   }
 }

@@ -39,26 +39,51 @@ class CanvasListItemData {
   const CanvasListItemData({
     required this.id,
     required this.displayName,
-    required this.filePath,
-    required this.lastEditedTime,
+    required this.fileName,
+    required this.editedLabel,
     this.thumbnailBytes,
   });
 
   final String id;
   final String displayName;
-  final String filePath;
-  final DateTime lastEditedTime;
+  final String fileName;
+  final String editedLabel;
   final Uint8List? thumbnailBytes;
 }
 
 extension CanvasMetadataUi on CanvasMetadata {
   CanvasListItemData toListItemData() {
+    final fileName = _fileNameFromPath(filePath);
+    final editedLabel = _formatLastEdited(lastEditedTime);
     return CanvasListItemData(
       id: id,
       displayName: name,
-      filePath: filePath,
-      lastEditedTime: lastEditedTime,
+      fileName: fileName.isEmpty ? 'Untitled' : fileName,
+      editedLabel: editedLabel,
       thumbnailBytes: thumbnailData,
     );
+  }
+
+  String _fileNameFromPath(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final index = normalized.lastIndexOf('/');
+    if (index == -1 || index == normalized.length - 1) {
+      return normalized;
+    }
+    return normalized.substring(index + 1);
+  }
+
+  String _formatLastEdited(DateTime dateTime) {
+    final difference = DateTime.now().difference(dateTime);
+    if (difference.inMinutes < 1) {
+      return 'Edited just now';
+    }
+    if (difference.inHours < 1) {
+      return 'Edited ${difference.inMinutes} minute${difference.inMinutes == 1 ? '' : 's'} ago';
+    }
+    if (difference.inDays < 1) {
+      return 'Edited ${difference.inHours} hour${difference.inHours == 1 ? '' : 's'} ago';
+    }
+    return 'Edited ${difference.inDays} day${difference.inDays == 1 ? '' : 's'} ago';
   }
 }
