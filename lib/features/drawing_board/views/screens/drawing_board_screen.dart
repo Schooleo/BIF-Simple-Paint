@@ -4,6 +4,8 @@ import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_bo
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/interactive_canvas.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/tool_palette.dart';
 import 'package:desktop_drop/desktop_drop.dart';
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -87,12 +89,81 @@ class CanvasArea extends ConsumerWidget {
               right: 24,
               child: ToolPalette(
                 onSave: () => _saveCanvas(context, ref),
+                onLoad: () => _loadCanvas(context, ref),
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _loadCanvas(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
+    final result = await FilePicker.platform.pickFiles(
+      dialogTitle: 'Open canvas',
+      type: FileType.custom,
+      allowedExtensions: const ['mypt'],
+    );
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final selected = result.files.first;
+    final path = selected.path;
+    if (path == null || path.trim().isEmpty) {
+      if (!context.mounted) {
+        return;
+      }
+
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Unable to open the selected file.')),
+      );
+      return;
+    }
+
+    if (!path.toLowerCase().endsWith('.mypt')) {
+      if (!context.mounted) {
+        return;
+      }
+
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Please select a .mypt file.')),
+      );
+      return;
+    }
+
+    final file = File(path);
+    if (!await file.exists()) {
+      if (!context.mounted) {
+        return;
+      }
+
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Selected file no longer exists.')),
+      );
+      return;
+    }
+
+    final bytes = await file.readAsBytes();
+    if (!context.mounted) {
+      return;
+    }
+
+    final failure = await drawingNotifier.loadFromBytes(bytes);
+    if (failure != null) {
+      if (!context.mounted) {
+        return;
+      }
+
+      messenger.showSnackBar(
+        SnackBar(content: Text(_loadFailureMessage(failure))),
+      );
+      return;
+    }
+
+    drawingNotifier.setCurrentFilePath(path);
   }
 
   Future<void> _saveCanvas(BuildContext context, WidgetRef ref) async {
@@ -154,5 +225,14 @@ class CanvasArea extends ConsumerWidget {
       return normalized;
     }
     return normalized.substring(index + 1);
+  }
+
+  String _loadFailureMessage(CanvasLoadFailure failure) {
+    switch (failure) {
+      case CanvasLoadFailure.unsupportedVersion:
+        return 'Unsupported file version.';
+      case CanvasLoadFailure.corruptedFile:
+        return 'This file appears to be corrupted.';
+    }
   }
 }
