@@ -104,6 +104,14 @@ class DatabaseService {
     return File(filePath).readAsBytes();
   }
 
+  Future<bool> canvasFileExists(String filePath) async {
+    if (filePath.trim().isEmpty) {
+      return false;
+    }
+
+    return File(filePath).exists();
+  }
+
   Future<List<Map<String, Object?>>> _readMetadataEntries() async {
     final file = await _metadataFile();
     if (!await file.exists()) {
@@ -177,6 +185,15 @@ class DatabaseService {
     List<Map<String, Object?>> entries,
     Map<String, Object?> normalized,
   ) {
+    final normalizedFilePath = _stringValue(normalized[filePathKey]).trim();
+    if (normalizedFilePath.isNotEmpty) {
+      entries.removeWhere(
+        (entry) =>
+            entry[filePathKey] == normalizedFilePath &&
+            entry[idKey] != normalized[idKey],
+      );
+    }
+
     final index = entries.indexWhere(
       (entry) => entry[idKey] == normalized[idKey],
     );

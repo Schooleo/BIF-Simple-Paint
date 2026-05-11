@@ -17,6 +17,8 @@ const Duration _autoSaveDebounce = Duration(seconds: 2);
 const double _serializedCanvasWidth = 4096;
 const double _serializedCanvasHeight = 4096;
 
+enum CanvasLoadFailure { unsupportedVersion, corruptedFile }
+
 @riverpod
 class DrawingBoardNotifier extends _$DrawingBoardNotifier
     with WidgetsBindingObserver {
@@ -172,7 +174,7 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
     _markDirty();
   }
 
-  Future<void> loadFromBytes(Uint8List data) async {
+  Future<CanvasLoadFailure?> loadFromBytes(Uint8List data) async {
     try {
       final decoded = await decodeShapes(data);
       final shapes = decoded.shapes;
@@ -186,9 +188,21 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
         currentCanvasName: 'Untitled',
       ).copyWith(finalizedShapes: _cloneSnapshot(shapes));
       _markDirty();
-    } on FormatException {
-      return;
+      return null;
+    } on FormatException catch (error) {
+      return _mapLoadFailure(error);
+    } catch (_) {
+      return CanvasLoadFailure.corruptedFile;
     }
+  }
+
+  CanvasLoadFailure _mapLoadFailure(FormatException error) {
+    final message = error.message;
+    if (message.contains('unsupported version') ||
+        message.contains('Invalid magic bytes')) {
+      return CanvasLoadFailure.unsupportedVersion;
+    }
+    return CanvasLoadFailure.corruptedFile;
   }
 
   void setCurrentFilePath(
@@ -409,6 +423,38 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
     if (state.currentFilePath == null) {
       state = state.copyWith(currentFilePath: resolvedPath);
     }
+  }
+
+  Future<String?> saveToFilePath(String? filePath) async {
+    final databaseService = ref.read(databaseServiceProvider);
+    final snapshot = _cloneSnapshot(state.finalizedShapes);
+    final serialized = await encodeShapes(
+      snapshot,
+      _serializedCanvasWidth,
+      _serializedCanvasHeight,
+    );
+    final thumbnailData = await ThumbnailGenerator.generate(snapshot);
+    final resolvedPath = await databaseService.persistCanvas(
+      canvasId: state.currentCanvasId,
+      name: state.currentCanvasName,
+      filePath: filePath ?? state.currentFilePath,
+      canvasBytes: serialized,
+      thumbnailData: thumbnailData,
+      lastEditedTime: DateTime.now(),
+    );
+
+    if (_isDisposed) {
+      return null;
+    }
+
+    _lastSavedRevision = _revision;
+    unawaited(ref.read(canvasListNotifierProvider.notifier).loadCanvases());
+    state = state.copyWith(
+      currentFilePath: resolvedPath,
+      currentCanvasName: _canvasNameFor(resolvedPath),
+    );
+
+    return resolvedPath;
   }
 
   String _generateCanvasId() =>
