@@ -14,13 +14,13 @@ void main() {
             child: SizedBox(
               width: 248,
               child: CanvasListItem(
-                metadata: CanvasMetadata(
+                viewData: CanvasMetadata(
                   id: 'canvas-1',
                   name: 'A very long canvas name that should truncate cleanly',
                   filePath:
                       '/Users/example/Documents/projects/really/long/path/draft.mypt',
                   lastEditedTime: DateTime.now(),
-                ),
+                ).toListItemData(),
                 onDelete: () {},
               ),
             ),

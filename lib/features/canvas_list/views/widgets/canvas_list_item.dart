@@ -4,19 +4,19 @@ import 'package:flutter/material.dart';
 class CanvasListItem extends StatelessWidget {
   const CanvasListItem({
     super.key,
-    required this.metadata,
+    required this.viewData,
     this.onTap,
     this.onDelete,
   });
 
-  final CanvasMetadata metadata;
+  final CanvasListItemData viewData;
   final VoidCallback? onTap;
   final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final thumbnailData = metadata.thumbnailData;
+    final thumbnailData = viewData.thumbnailBytes;
 
     return Material(
       borderRadius: BorderRadius.circular(12),
@@ -47,21 +47,21 @@ class CanvasListItem extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      metadata.name,
+                      viewData.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.titleSmall,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _formatLastEdited(metadata.lastEditedTime),
+                      _formatLastEdited(viewData.lastEditedTime),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall,
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      metadata.filePath,
+                      viewData.filePath,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(

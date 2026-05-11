@@ -34,3 +34,31 @@ class CanvasMetadata {
     );
   }
 }
+
+class CanvasListItemData {
+  const CanvasListItemData({
+    required this.id,
+    required this.displayName,
+    required this.filePath,
+    required this.lastEditedTime,
+    this.thumbnailBytes,
+  });
+
+  final String id;
+  final String displayName;
+  final String filePath;
+  final DateTime lastEditedTime;
+  final Uint8List? thumbnailBytes;
+}
+
+extension CanvasMetadataUi on CanvasMetadata {
+  CanvasListItemData toListItemData() {
+    return CanvasListItemData(
+      id: id,
+      displayName: name,
+      filePath: filePath,
+      lastEditedTime: lastEditedTime,
+      thumbnailBytes: thumbnailData,
+    );
+  }
+}

@@ -69,8 +69,9 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
                         separatorBuilder: (_, _) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final metadata = canvases[index];
+                          final viewData = metadata.toListItemData();
                           return CanvasListItem(
-                            metadata: metadata,
+                            viewData: viewData,
                             onTap: () => _openCanvas(context, metadata),
                             onDelete: () => _deleteCanvas(context, metadata),
                           );
