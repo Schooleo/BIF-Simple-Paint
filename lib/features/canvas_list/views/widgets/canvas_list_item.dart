@@ -17,6 +17,10 @@ class CanvasListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final thumbnailData = viewData.thumbnailBytes;
+    final placeholder = ColoredBox(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: const Icon(Icons.brush_outlined),
+    );
 
     return Material(
       borderRadius: BorderRadius.circular(12),
@@ -33,10 +37,7 @@ class CanvasListItem extends StatelessWidget {
                 child: SizedBox.square(
                   dimension: 48,
                   child: thumbnailData == null
-                      ? ColoredBox(
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          child: const Icon(Icons.brush_outlined),
-                        )
+                      ? placeholder
                       : RepaintBoundary(
                           child: Image.memory(
                             thumbnailData,
@@ -45,6 +46,7 @@ class CanvasListItem extends StatelessWidget {
                             cacheWidth: 96,
                             cacheHeight: 96,
                             filterQuality: FilterQuality.medium,
+                            errorBuilder: (_, __, ___) => placeholder,
                           ),
                         ),
                 ),

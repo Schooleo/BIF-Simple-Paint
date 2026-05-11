@@ -52,7 +52,7 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
                 child: Builder(
                   builder: (context) {
                     if (canvasState.isLoading && canvasState.canvases.isEmpty) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const _CanvasListSkeleton();
                     }
 
                     final canvases = canvasState.filteredCanvases;
@@ -71,6 +71,7 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
                               .read(canvasListNotifierProvider.notifier)
                               .loadCanvases(),
                           child: ListView.separated(
+                            padding: const EdgeInsets.only(bottom: 12),
                             itemCount: canvases.length,
                             separatorBuilder: (_, _) =>
                                 const SizedBox(height: 12),
@@ -78,6 +79,7 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
                               final metadata = canvases[index];
                               final viewData = viewDataList[index];
                               return CanvasListItem(
+                                key: ValueKey(metadata.id),
                                 viewData: viewData,
                                 onTap: () => _openCanvas(context, metadata),
                                 onDelete: () =>
@@ -243,11 +245,96 @@ class _EmptyCanvasState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
     return Center(
-      child: Text(
-        'No saved canvases yet.',
-        style: Theme.of(context).textTheme.bodyMedium,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(
+            Icons.collections_bookmark_outlined,
+            size: 40,
+            color: colors.textMuted,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No saved canvases yet.',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(color: colors.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Create your first canvas to see it here.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _CanvasListSkeleton extends StatelessWidget {
+  const _CanvasListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final Color surface = colors.surfaceSecondary;
+    final Color border = colors.borderSubtle;
+
+    return ListView.separated(
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 6,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, _) {
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: border),
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                height: 48,
+                width: 48,
+                decoration: BoxDecoration(
+                  color: colors.surfaceFloating,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Container(
+                      height: 12,
+                      width: double.infinity,
+                      color: colors.surfaceFloating,
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 10,
+                      width: 140,
+                      color: colors.surfaceFloating,
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      height: 10,
+                      width: 180,
+                      color: colors.surfaceFloating,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
