@@ -81,18 +81,23 @@ abstract base class TwoPointShape extends BaseShape {
       movingCorner = bottomRight + delta;
     }
 
-    final newStart = Offset(
-      fixedCorner.dx < movingCorner.dx ? fixedCorner.dx : movingCorner.dx,
-      fixedCorner.dy < movingCorner.dy ? fixedCorner.dy : movingCorner.dy,
-    );
-    final newEnd = Offset(
-      fixedCorner.dx > movingCorner.dx ? fixedCorner.dx : movingCorner.dx,
-      fixedCorner.dy > movingCorner.dy ? fixedCorner.dy : movingCorner.dy,
-    );
-
     return createWith(
-      startPoint: newStart,
-      endPoint: newEnd,
+      startPoint: fixedCorner,
+      endPoint: movingCorner,
+      id: id,
+      fillColor: fillColor,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
+  }
+
+  TwoPointShape resizeFromAnchors({
+    required Offset fixedCorner,
+    required Offset movingCorner,
+  }) {
+    return createWith(
+      startPoint: fixedCorner,
+      endPoint: movingCorner,
       id: id,
       fillColor: fillColor,
       strokeColor: strokeColor,

@@ -33,13 +33,15 @@ final class SquareShape extends TwoPointShape {
     Color strokeColor = defaultStrokeColor,
     double strokeWidth = defaultStrokeWidth,
   }) {
+    final dx = (endPoint.dx - startPoint.dx).abs();
+    final dy = (endPoint.dy - startPoint.dy).abs();
+    final sideLength = dx < dy ? dx : dy;
+    final signX = endPoint.dx >= startPoint.dx ? 1.0 : -1.0;
+    final signY = endPoint.dy >= startPoint.dy ? 1.0 : -1.0;
     final center = Offset(
-      (startPoint.dx + endPoint.dx) / 2,
-      (startPoint.dy + endPoint.dy) / 2,
+      startPoint.dx + (signX * sideLength / 2),
+      startPoint.dy + (signY * sideLength / 2),
     );
-    final width = (endPoint.dx - startPoint.dx).abs();
-    final height = (endPoint.dy - startPoint.dy).abs();
-    final sideLength = width < height ? width : height;
 
     return SquareShape(
       center: center,

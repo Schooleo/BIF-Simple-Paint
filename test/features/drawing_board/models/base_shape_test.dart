@@ -192,10 +192,10 @@ void main() {
 
     final shape = CircleShape.fromBounds(startPoint: start, endPoint: end);
 
-    expect(shape.center, const Offset(5, 10));
+    expect(shape.center, const Offset(5, 5));
     expect(shape.radius, 5);
-    expect(shape.startPoint, const Offset(0, 5));
-    expect(shape.endPoint, const Offset(10, 15));
+    expect(shape.startPoint, const Offset(0, 0));
+    expect(shape.endPoint, const Offset(10, 10));
   });
 
   test('SquareShape.fromBounds keeps square semantics', () {
@@ -204,10 +204,10 @@ void main() {
 
     final shape = SquareShape.fromBounds(startPoint: start, endPoint: end);
 
-    expect(shape.center, const Offset(5, 10));
+    expect(shape.center, const Offset(5, 5));
     expect(shape.sideLength, 10);
-    expect(shape.startPoint, const Offset(0, 5));
-    expect(shape.endPoint, const Offset(10, 15));
+    expect(shape.startPoint, const Offset(0, 0));
+    expect(shape.endPoint, const Offset(10, 10));
   });
 
   test('ArrowShape.extendTo updates end point', () {

@@ -34,6 +34,8 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     with CanvasCapture {
   _DragMode _dragMode = _DragMode.none;
   ResizeCorner? _resizeCorner;
+  Offset? _resizeFixedCorner;
+  Offset? _resizeMovingCorner;
   bool _isShiftPressed = false;
   final FocusNode _focusNode = FocusNode();
   final GlobalKey _canvasKey = GlobalKey();
@@ -202,9 +204,22 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       if (_dragMode == _DragMode.move) {
         drawingBoardNotifier.updateSelectedShape(selectedShape.translate(delta));
       } else if (_dragMode == _DragMode.resize && _resizeCorner != null) {
-        drawingBoardNotifier.updateSelectedShape(
-          selectedShape.resize(delta, _resizeCorner!),
-        );
+        if (selectedShape is TwoPointShape &&
+            _resizeFixedCorner != null &&
+            _resizeMovingCorner != null) {
+          final newMovingCorner = _resizeMovingCorner! + delta;
+          _resizeMovingCorner = newMovingCorner;
+          drawingBoardNotifier.updateSelectedShape(
+            selectedShape.resizeFromAnchors(
+              fixedCorner: _resizeFixedCorner!,
+              movingCorner: newMovingCorner,
+            ),
+          );
+        } else {
+          drawingBoardNotifier.updateSelectedShape(
+            selectedShape.resize(delta, _resizeCorner!),
+          );
+        }
       }
 
       return;
@@ -229,6 +244,8 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       }
       _dragMode = _DragMode.none;
       _resizeCorner = null;
+      _resizeFixedCorner = null;
+      _resizeMovingCorner = null;
       return;
     }
 
@@ -273,6 +290,8 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
   ) {
     _dragMode = _DragMode.none;
     _resizeCorner = null;
+    _resizeFixedCorner = null;
+    _resizeMovingCorner = null;
 
     final selectedShape = ref.read(drawingBoardNotifierProvider).selectedShape;
     if (selectedShape == null) {
@@ -284,6 +303,12 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     if (hitCorner != null) {
       _dragMode = _DragMode.resize;
       _resizeCorner = hitCorner;
+      final shapeBounds = _shapeBounds(selectedShape);
+      _resizeMovingCorner = _cornerOffset(shapeBounds, hitCorner);
+      _resizeFixedCorner = _cornerOffset(
+        shapeBounds,
+        _oppositeCorner(hitCorner),
+      );
       drawingBoardNotifier.beginTransform();
       return;
     }
@@ -379,14 +404,13 @@ class CanvasPainter extends CustomPainter {
     if (activeTempShape != null) {
       _drawShape(canvas, activeTempShape);
     }
+    if (needsLayer) {
+      canvas.restore();
+    }
 
     final selectedShape = state.selectedShape;
     if (selectedShape != null) {
       _drawSelection(canvas, selectedShape);
-    }
-
-    if (needsLayer) {
-      canvas.restore();
     }
   }
 
@@ -641,6 +665,9 @@ class CanvasPainter extends CustomPainter {
 
 BaseShape? _hitTestShapes(List<BaseShape> shapes, Offset point) {
   for (final shape in shapes.reversed) {
+    if (shape is EraserShape) {
+      continue;
+    }
     if (shape.contains(point)) {
       return shape;
     }
@@ -709,6 +736,15 @@ Offset _cornerOffset(Rect bounds, ResizeCorner corner) {
     ResizeCorner.topRight => bounds.topRight,
     ResizeCorner.bottomLeft => bounds.bottomLeft,
     ResizeCorner.bottomRight => bounds.bottomRight,
+  };
+}
+
+ResizeCorner _oppositeCorner(ResizeCorner corner) {
+  return switch (corner) {
+    ResizeCorner.topLeft => ResizeCorner.bottomRight,
+    ResizeCorner.topRight => ResizeCorner.bottomLeft,
+    ResizeCorner.bottomLeft => ResizeCorner.topRight,
+    ResizeCorner.bottomRight => ResizeCorner.topLeft,
   };
 }
 

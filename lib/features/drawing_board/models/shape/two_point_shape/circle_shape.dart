@@ -27,13 +27,15 @@ final class CircleShape extends TwoPointShape {
     Color strokeColor = defaultStrokeColor,
     double strokeWidth = defaultStrokeWidth,
   }) {
+    final dx = (endPoint.dx - startPoint.dx).abs();
+    final dy = (endPoint.dy - startPoint.dy).abs();
+    final radius = (dx < dy ? dx : dy) / 2;
+    final signX = endPoint.dx >= startPoint.dx ? 1.0 : -1.0;
+    final signY = endPoint.dy >= startPoint.dy ? 1.0 : -1.0;
     final center = Offset(
-      (startPoint.dx + endPoint.dx) / 2,
-      (startPoint.dy + endPoint.dy) / 2,
+      startPoint.dx + (signX * radius),
+      startPoint.dy + (signY * radius),
     );
-    final width = (endPoint.dx - startPoint.dx).abs();
-    final height = (endPoint.dy - startPoint.dy).abs();
-    final radius = (width < height ? width : height) / 2;
 
     return CircleShape(
       center: center,
