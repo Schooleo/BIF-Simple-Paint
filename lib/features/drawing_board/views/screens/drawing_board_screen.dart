@@ -4,6 +4,7 @@ import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_bo
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/interactive_canvas.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/tool_palette.dart';
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -81,10 +82,77 @@ class CanvasArea extends ConsumerWidget {
                 ),
               ),
             ),
-            const Positioned(top: 24, right: 24, child: ToolPalette()),
+            Positioned(
+              top: 24,
+              right: 24,
+              child: ToolPalette(
+                onSave: () => _saveCanvas(context, ref),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _saveCanvas(BuildContext context, WidgetRef ref) async {
+    final drawingState = ref.read(drawingBoardNotifierProvider);
+    final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
+    String? targetPath = drawingState.currentFilePath;
+
+    if (targetPath == null || targetPath.isEmpty) {
+      final suggestedName = _ensureMyptExtension(
+        drawingState.currentCanvasName.trim().isEmpty
+            ? 'untitled'
+            : drawingState.currentCanvasName,
+      );
+      final pickedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save canvas',
+        fileName: suggestedName,
+        type: FileType.custom,
+        allowedExtensions: const ['mypt'],
+      );
+      if (pickedPath == null) {
+        return;
+      }
+
+      targetPath = _ensureMyptExtension(pickedPath);
+    }
+
+    try {
+      final resolvedPath = await drawingNotifier.saveToFilePath(targetPath);
+      if (!context.mounted || resolvedPath == null) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved to ${_fileNameFromPath(resolvedPath)}.')),
+      );
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Save failed.')));
+    }
+  }
+
+  String _ensureMyptExtension(String path) {
+    final normalized = path.trim();
+    if (normalized.toLowerCase().endsWith('.mypt')) {
+      return normalized;
+    }
+    return '$normalized.mypt';
+  }
+
+  String _fileNameFromPath(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final index = normalized.lastIndexOf('/');
+    if (index == -1 || index == normalized.length - 1) {
+      return normalized;
+    }
+    return normalized.substring(index + 1);
   }
 }

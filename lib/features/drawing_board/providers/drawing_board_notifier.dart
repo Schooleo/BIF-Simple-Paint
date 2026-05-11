@@ -425,6 +425,38 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
     }
   }
 
+  Future<String?> saveToFilePath(String? filePath) async {
+    final databaseService = ref.read(databaseServiceProvider);
+    final snapshot = _cloneSnapshot(state.finalizedShapes);
+    final serialized = await encodeShapes(
+      snapshot,
+      _serializedCanvasWidth,
+      _serializedCanvasHeight,
+    );
+    final thumbnailData = await ThumbnailGenerator.generate(snapshot);
+    final resolvedPath = await databaseService.persistCanvas(
+      canvasId: state.currentCanvasId,
+      name: state.currentCanvasName,
+      filePath: filePath ?? state.currentFilePath,
+      canvasBytes: serialized,
+      thumbnailData: thumbnailData,
+      lastEditedTime: DateTime.now(),
+    );
+
+    if (_isDisposed) {
+      return null;
+    }
+
+    _lastSavedRevision = _revision;
+    unawaited(ref.read(canvasListNotifierProvider.notifier).loadCanvases());
+    state = state.copyWith(
+      currentFilePath: resolvedPath,
+      currentCanvasName: _canvasNameFor(resolvedPath),
+    );
+
+    return resolvedPath;
+  }
+
   String _generateCanvasId() =>
       'canvas_${DateTime.now().microsecondsSinceEpoch}';
 
