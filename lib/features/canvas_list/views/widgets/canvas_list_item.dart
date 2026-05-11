@@ -46,7 +46,8 @@ class CanvasListItem extends StatelessWidget {
                             cacheWidth: 96,
                             cacheHeight: 96,
                             filterQuality: FilterQuality.medium,
-                            errorBuilder: (_, __, ___) => placeholder,
+                            errorBuilder: (context, error, stackTrace) =>
+                                placeholder,
                           ),
                         ),
                 ),
