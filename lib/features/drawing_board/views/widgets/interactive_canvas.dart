@@ -75,46 +75,53 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     final background =
         Theme.of(context).extension<AppColors>()?.backgroundCanvas ??
             Colors.white;
-    final boundaryContext = _canvasKey.currentContext;
-    if (boundaryContext == null) {
-      return null;
+
+    final boundary = _canvasKey.currentContext?.findRenderObject()
+        as RenderRepaintBoundary?;
+    if (boundary == null) return null;
+
+    final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
+    final currentSelectedId =
+        ref.read(drawingBoardNotifierProvider).selectedShapeId;
+    final shouldRestoreSelection = currentSelectedId != null;
+
+    if (shouldRestoreSelection) {
+      drawingNotifier.selectShape(null);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
     }
 
-    final boundary = boundaryContext.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary == null) {
-      return null;
+    try {
+      final image = await boundary.toImage(pixelRatio: pixelRatio);
+
+      if (!asJpeg) {
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        return byteData?.buffer.asUint8List();
+      }
+
+      final pngData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (pngData == null) return null;
+
+      final overlay = img.decodePng(pngData.buffer.asUint8List());
+      if (overlay == null) return null;
+
+      final composed = img.Image(width: image.width, height: image.height);
+      img.fill(
+        composed,
+        color: img.ColorRgba8(
+          (background.r * 255.0).round().clamp(0, 255),
+          (background.g * 255.0).round().clamp(0, 255),
+          (background.b * 255.0).round().clamp(0, 255),
+          255,
+        ),
+      );
+      img.compositeImage(composed, overlay);
+
+      return Uint8List.fromList(img.encodeJpg(composed, quality: 92));
+    } finally {
+      if (shouldRestoreSelection) {
+        drawingNotifier.selectShape(currentSelectedId);
+      }
     }
-
-    final image = await boundary.toImage(pixelRatio: pixelRatio);
-
-    if (!asJpeg) {
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      return byteData?.buffer.asUint8List();
-    }
-
-    final pngData = await image.toByteData(format: ui.ImageByteFormat.png);
-    if (pngData == null) {
-      return null;
-    }
-
-    final overlay = img.decodePng(pngData.buffer.asUint8List());
-    if (overlay == null) {
-      return null;
-    }
-
-    final composed = img.Image(width: image.width, height: image.height);
-    img.fill(
-      composed,
-      color: img.ColorRgba8(
-        (background.r * 255.0).round().clamp(0, 255),
-        (background.g * 255.0).round().clamp(0, 255),
-        (background.b * 255.0).round().clamp(0, 255),
-        255,
-      ),
-    );
-    img.compositeImage(composed, overlay);
-
-    return Uint8List.fromList(img.encodeJpg(composed, quality: 92));
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {

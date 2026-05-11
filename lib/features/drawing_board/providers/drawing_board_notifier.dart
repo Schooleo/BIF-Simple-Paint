@@ -174,18 +174,24 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
     _markDirty();
   }
 
-  Future<CanvasLoadFailure?> loadFromBytes(Uint8List data) async {
+  Future<CanvasLoadFailure?> loadFromBytes(
+    Uint8List data, {
+    String? filePath,
+  }) async {
     try {
       final decoded = await decodeShapes(data);
       final shapes = decoded.shapes;
       final nextCanvasId = _generateCanvasId();
+      final normalizedPath =
+          filePath?.trim().isNotEmpty == true ? filePath!.trim() : null;
 
       _transformSnapshot = null;
       _shapeIdCounter = _nextIdFromShapes(shapes);
 
       state = DrawingBoardState.initial(
         currentCanvasId: nextCanvasId,
-        currentCanvasName: 'Untitled',
+        currentCanvasName: _canvasNameFor(normalizedPath),
+        currentFilePath: normalizedPath,
       ).copyWith(finalizedShapes: _cloneSnapshot(shapes));
       _markDirty();
       return null;

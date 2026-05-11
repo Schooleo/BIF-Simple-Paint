@@ -61,6 +61,19 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
             return;
           }
 
+          if (details.files.length > 1) {
+            if (!context.mounted) {
+              return;
+            }
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Please drop only one file at a time.'),
+              ),
+            );
+            return;
+          }
+
           final file = details.files.first;
           final name = file.name.toLowerCase();
           if (!name.endsWith('.mypt')) {
@@ -72,9 +85,11 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
             return;
           }
 
+          final rawPath = file.path;
+          final filePath = rawPath.trim().isEmpty ? null : rawPath;
           await ref
               .read(drawingBoardNotifierProvider.notifier)
-              .loadFromBytes(bytes);
+              .loadFromBytes(bytes, filePath: filePath);
         },
         child: Stack(
           children: <Widget>[
