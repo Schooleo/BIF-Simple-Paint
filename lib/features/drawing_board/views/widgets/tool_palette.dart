@@ -6,7 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ToolPalette extends ConsumerStatefulWidget {
-  const ToolPalette({super.key});
+  const ToolPalette({super.key, this.onSave, this.onLoad, this.onExport});
+
+  final VoidCallback? onSave;
+  final VoidCallback? onLoad;
+  final VoidCallback? onExport;
 
   @override
   ConsumerState<ToolPalette> createState() => _ToolPaletteState();
@@ -58,6 +62,7 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
   int? _hoveredStrokeIndex;
   int? _hoveredFillIndex;
   int? _hoveredToolIndex;
+  int? _hoveredFileIndex;
   bool _isShapeHovered = false;
 
   @override
@@ -95,12 +100,23 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
       fillColors,
       toolSelection.currentFillColor,
     );
-    final int selectedShapeIndex = _indexForShapeType(
-      toolSelection.shapeType,
-    );
+    final int selectedShapeIndex = _indexForShapeType(toolSelection.shapeType);
     final int selectedToolIndex = _toolTypes.indexOf(toolSelection.toolType);
     final bool isShapeSelected = toolSelection.toolType == ToolType.shape;
     final double strokeWidth = toolSelection.currentStrokeWidth;
+    final List<_FileAction> fileActions = <_FileAction>[
+      _FileAction(
+        label: 'Save',
+        icon: Icons.save_outlined,
+        onTap: widget.onSave,
+      ),
+      _FileAction(label: 'Load', icon: Icons.folder_open, onTap: widget.onLoad),
+      _FileAction(
+        label: 'Export',
+        icon: Icons.ios_share,
+        onTap: widget.onExport,
+      ),
+    ];
 
     return Align(
       alignment: Alignment.centerRight,
@@ -281,6 +297,61 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
                       },
                     ),
                   ],
+                ),
+                const SizedBox(height: 18),
+                _SectionTitle(title: 'FILE', colors: colors),
+                const SizedBox(height: 10),
+                Row(
+                  children: List<Widget>.generate(fileActions.length, (
+                    int index,
+                  ) {
+                    final _FileAction action = fileActions[index];
+                    final bool isHovered = _hoveredFileIndex == index;
+                    final Color background = isHovered
+                        ? colors.overlayHover
+                        : colors.surfaceSecondary;
+
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: Tooltip(
+                        message: action.label,
+                        child: MouseRegion(
+                          onEnter: (_) {
+                            setState(() {
+                              _hoveredFileIndex = index;
+                            });
+                          },
+                          onExit: (_) {
+                            setState(() {
+                              _hoveredFileIndex = null;
+                            });
+                          },
+                          child: AnimatedContainer(
+                            duration: _hoverDuration,
+                            curve: Curves.easeOutCubic,
+                            height: 44,
+                            width: 44,
+                            decoration: BoxDecoration(
+                              color: background,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: colors.borderSubtle),
+                            ),
+                            child: InkWell(
+                              onTap: action.onTap,
+                              borderRadius: BorderRadius.circular(14),
+                              child: Center(
+                                child: Icon(
+                                  action.icon,
+                                  color: colors.iconPrimary,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
                 ),
               ],
             ),
@@ -505,4 +576,16 @@ class _ShapeOption {
   final String label;
   final IconData icon;
   final ShapeType shapeType;
+}
+
+class _FileAction {
+  const _FileAction({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onTap;
 }

@@ -14,14 +14,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
-class MockDrawingBoardNotifier extends AutoDisposeNotifier<DrawingBoardState> with Mock implements DrawingBoardNotifier {
+class MockDrawingBoardNotifier extends AutoDisposeNotifier<DrawingBoardState>
+    with Mock
+    implements DrawingBoardNotifier {
   @override
   DrawingBoardState build() => DrawingBoardState.initial();
 }
 
 Widget wrapWithMaterialApp(Widget child) {
   return MaterialApp(
-    theme: ThemeData(extensions: const <ThemeExtension<dynamic>>[AppColors.light]),
+    theme: ThemeData(
+      extensions: const <ThemeExtension<dynamic>>[AppColors.light],
+    ),
     home: Scaffold(body: child),
   );
 }
@@ -92,8 +96,7 @@ void main() {
     notifier.updateDrawing(const Offset(160, 160));
     notifier.commitDrawing();
 
-    final shapes =
-        container.read(drawingBoardNotifierProvider).finalizedShapes;
+    final shapes = container.read(drawingBoardNotifierProvider).finalizedShapes;
     final backId = shapes.first.id;
     final topId = shapes.last.id;
     notifier.selectShape(backId);
@@ -116,8 +119,9 @@ void main() {
     await tester.tapAt(topLeft + const Offset(80, 80));
     await tester.pump();
 
-    final selectedId =
-        container.read(drawingBoardNotifierProvider).selectedShapeId;
+    final selectedId = container
+        .read(drawingBoardNotifierProvider)
+        .selectedShapeId;
     expect(selectedId, topId);
     await tester.pumpAndSettle();
   });
@@ -163,7 +167,7 @@ void main() {
   // --------------------------------------------------------------------------
   testWidgets('dropTarget_withMyptFile_triggersLoadFromBytes', (tester) async {
     final mockNotifier = MockDrawingBoardNotifier();
-    when(() => mockNotifier.loadFromBytes(any())).thenAnswer((_) async {});
+    when(() => mockNotifier.loadFromBytes(any())).thenAnswer((_) async => null);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -178,15 +182,21 @@ void main() {
     expect(dropTargetFinder, findsOneWidget);
 
     final dropTarget = tester.widget<DropTarget>(dropTargetFinder);
-    
-    final fakeFile = DropItemFile.fromData(Uint8List.fromList([1, 2, 3]), name: 'drawing.mypt', path: 'drawing.mypt');
-    
+
+    final fakeFile = DropItemFile.fromData(
+      Uint8List.fromList([1, 2, 3]),
+      name: 'drawing.mypt',
+      path: 'drawing.mypt',
+    );
+
     await tester.runAsync(() async {
-      dropTarget.onDragDone!(DropDoneDetails(
-        files: [fakeFile],
-        localPosition: Offset.zero,
-        globalPosition: Offset.zero,
-      ));
+      dropTarget.onDragDone!(
+        DropDoneDetails(
+          files: [fakeFile],
+          localPosition: Offset.zero,
+          globalPosition: Offset.zero,
+        ),
+      );
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
     await tester.pumpAndSettle();
@@ -196,7 +206,7 @@ void main() {
 
   testWidgets('dropTarget_withInvalidFile_ignoresDrop', (tester) async {
     final mockNotifier = MockDrawingBoardNotifier();
-    when(() => mockNotifier.loadFromBytes(any())).thenAnswer((_) async {});
+    when(() => mockNotifier.loadFromBytes(any())).thenAnswer((_) async => null);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -211,29 +221,41 @@ void main() {
     expect(dropTargetFinder, findsOneWidget);
 
     final dropTarget = tester.widget<DropTarget>(dropTargetFinder);
-    
-    final fakeTxtFile = DropItemFile.fromData(Uint8List.fromList([1, 2, 3]), name: 'drawing.txt', path: 'drawing.txt');
-    
+
+    final fakeTxtFile = DropItemFile.fromData(
+      Uint8List.fromList([1, 2, 3]),
+      name: 'drawing.txt',
+      path: 'drawing.txt',
+    );
+
     await tester.runAsync(() async {
-      dropTarget.onDragDone!(DropDoneDetails(
-        files: [fakeTxtFile],
-        localPosition: Offset.zero,
-        globalPosition: Offset.zero,
-      ));
+      dropTarget.onDragDone!(
+        DropDoneDetails(
+          files: [fakeTxtFile],
+          localPosition: Offset.zero,
+          globalPosition: Offset.zero,
+        ),
+      );
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
     await tester.pumpAndSettle();
 
     verifyNever(() => mockNotifier.loadFromBytes(any()));
-    
-    final fakePngFile = DropItemFile.fromData(Uint8List.fromList([1, 2, 3]), name: 'drawing.png', path: 'drawing.png');
-    
+
+    final fakePngFile = DropItemFile.fromData(
+      Uint8List.fromList([1, 2, 3]),
+      name: 'drawing.png',
+      path: 'drawing.png',
+    );
+
     await tester.runAsync(() async {
-      dropTarget.onDragDone!(DropDoneDetails(
-        files: [fakePngFile],
-        localPosition: Offset.zero,
-        globalPosition: Offset.zero,
-      ));
+      dropTarget.onDragDone!(
+        DropDoneDetails(
+          files: [fakePngFile],
+          localPosition: Offset.zero,
+          globalPosition: Offset.zero,
+        ),
+      );
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
     await tester.pumpAndSettle();
@@ -246,14 +268,12 @@ void main() {
   // --------------------------------------------------------------------------
   testWidgets('captureImage_whenCalled_returnsUint8List', (tester) async {
     await tester.pumpWidget(
-      ProviderScope(
-        child: wrapWithMaterialApp(const InteractiveCanvas()),
-      ),
+      ProviderScope(child: wrapWithMaterialApp(const InteractiveCanvas())),
     );
 
     final repaintBoundaryFinder = find.byType(RepaintBoundary);
     expect(repaintBoundaryFinder, findsWidgets);
-    
+
     // Specifically check that RepaintBoundary wraps the CustomPaint (CanvasPainter)
     final customPaintFinder = find.descendant(
       of: repaintBoundaryFinder,
