@@ -87,9 +87,11 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
 
           final rawPath = file.path;
           final filePath = rawPath.trim().isEmpty ? null : rawPath;
-          await ref
-              .read(drawingBoardNotifierProvider.notifier)
-              .loadFromBytes(bytes, filePath: filePath);
+          final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
+          await drawingNotifier.loadFromBytes(bytes);
+          if (filePath != null) {
+            drawingNotifier.setCurrentFilePath(filePath);
+          }
         },
         child: Stack(
           children: <Widget>[
