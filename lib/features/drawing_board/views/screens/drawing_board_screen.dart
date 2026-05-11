@@ -36,11 +36,18 @@ class DesktopLayout extends StatelessWidget {
   }
 }
 
-class CanvasArea extends ConsumerWidget {
+class CanvasArea extends ConsumerStatefulWidget {
   const CanvasArea({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CanvasArea> createState() => _CanvasAreaState();
+}
+
+class _CanvasAreaState extends ConsumerState<CanvasArea> {
+  final GlobalKey<CanvasCapture> _canvasExportKey = GlobalKey<CanvasCapture>();
+
+  @override
+  Widget build(BuildContext context) {
     final drawingState = ref.watch(drawingBoardNotifierProvider);
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
     final Color background = colors.backgroundCanvas;
@@ -71,7 +78,7 @@ class CanvasArea extends ConsumerWidget {
         },
         child: Stack(
           children: <Widget>[
-            const Positioned.fill(child: InteractiveCanvas()),
+            Positioned.fill(child: InteractiveCanvas(key: _canvasExportKey)),
             Align(
               alignment: Alignment.topCenter,
               child: Padding(
@@ -88,8 +95,9 @@ class CanvasArea extends ConsumerWidget {
               top: 24,
               right: 24,
               child: ToolPalette(
-                onSave: () => _saveCanvas(context, ref),
-                onLoad: () => _loadCanvas(context, ref),
+                onSave: () => _saveCanvas(context),
+                onLoad: () => _loadCanvas(context),
+                onExport: () => _exportCanvas(context),
               ),
             ),
           ],
@@ -98,7 +106,7 @@ class CanvasArea extends ConsumerWidget {
     );
   }
 
-  Future<void> _loadCanvas(BuildContext context, WidgetRef ref) async {
+  Future<void> _loadCanvas(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
     final result = await FilePicker.platform.pickFiles(
@@ -166,7 +174,7 @@ class CanvasArea extends ConsumerWidget {
     drawingNotifier.setCurrentFilePath(path);
   }
 
-  Future<void> _saveCanvas(BuildContext context, WidgetRef ref) async {
+  Future<void> _saveCanvas(BuildContext context) async {
     final drawingState = ref.read(drawingBoardNotifierProvider);
     final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
     String? targetPath = drawingState.currentFilePath;
@@ -210,6 +218,54 @@ class CanvasArea extends ConsumerWidget {
     }
   }
 
+  Future<void> _exportCanvas(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final drawingState = ref.read(drawingBoardNotifierProvider);
+    final baseName = drawingState.currentCanvasName.trim().isEmpty
+        ? 'untitled'
+        : drawingState.currentCanvasName;
+    final suggestedName = _ensurePngExtension(baseName);
+    final exportPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Export canvas',
+      fileName: suggestedName,
+      type: FileType.custom,
+      allowedExtensions: const ['png'],
+    );
+    if (exportPath == null) {
+      return;
+    }
+
+    final resolvedPath = _ensurePngExtension(exportPath);
+    final state = _canvasExportKey.currentState;
+    final bytes = await state?.captureImage(asJpeg: false);
+    if (!context.mounted) {
+      return;
+    }
+
+    if (bytes == null) {
+      messenger.showSnackBar(const SnackBar(content: Text('Export failed.')));
+      return;
+    }
+
+    try {
+      final file = File(resolvedPath);
+      await file.writeAsBytes(bytes, flush: true);
+      if (!context.mounted) {
+        return;
+      }
+
+      messenger.showSnackBar(
+        SnackBar(content: Text('Exported ${_fileNameFromPath(resolvedPath)}.')),
+      );
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+
+      messenger.showSnackBar(const SnackBar(content: Text('Export failed.')));
+    }
+  }
+
   String _ensureMyptExtension(String path) {
     final normalized = path.trim();
     if (normalized.toLowerCase().endsWith('.mypt')) {
@@ -225,6 +281,14 @@ class CanvasArea extends ConsumerWidget {
       return normalized;
     }
     return normalized.substring(index + 1);
+  }
+
+  String _ensurePngExtension(String path) {
+    final normalized = path.trim();
+    if (normalized.toLowerCase().endsWith('.png')) {
+      return normalized;
+    }
+    return '$normalized.png';
   }
 
   String _loadFailureMessage(CanvasLoadFailure failure) {
