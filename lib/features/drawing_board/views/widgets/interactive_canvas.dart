@@ -34,6 +34,10 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     with CanvasCapture {
   _DragMode _dragMode = _DragMode.none;
   ResizeCorner? _resizeCorner;
+  Offset? _resizeFixedCorner;
+  Offset? _resizeMovingCorner;
+  Offset? _resizeRawMovingCorner;
+  _ResizeAxis? _resizeLockAxis;
   bool _isShiftPressed = false;
   final FocusNode _focusNode = FocusNode();
   final GlobalKey _canvasKey = GlobalKey();
@@ -75,46 +79,53 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     final background =
         Theme.of(context).extension<AppColors>()?.backgroundCanvas ??
             Colors.white;
-    final boundaryContext = _canvasKey.currentContext;
-    if (boundaryContext == null) {
-      return null;
+
+    final boundary = _canvasKey.currentContext?.findRenderObject()
+        as RenderRepaintBoundary?;
+    if (boundary == null) return null;
+
+    final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
+    final currentSelectedId =
+        ref.read(drawingBoardNotifierProvider).selectedShapeId;
+    final shouldRestoreSelection = currentSelectedId != null;
+
+    if (shouldRestoreSelection) {
+      drawingNotifier.selectShape(null);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
     }
 
-    final boundary = boundaryContext.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary == null) {
-      return null;
+    try {
+      final image = await boundary.toImage(pixelRatio: pixelRatio);
+
+      if (!asJpeg) {
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        return byteData?.buffer.asUint8List();
+      }
+
+      final pngData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (pngData == null) return null;
+
+      final overlay = img.decodePng(pngData.buffer.asUint8List());
+      if (overlay == null) return null;
+
+      final composed = img.Image(width: image.width, height: image.height);
+      img.fill(
+        composed,
+        color: img.ColorRgba8(
+          (background.r * 255.0).round().clamp(0, 255),
+          (background.g * 255.0).round().clamp(0, 255),
+          (background.b * 255.0).round().clamp(0, 255),
+          255,
+        ),
+      );
+      img.compositeImage(composed, overlay);
+
+      return Uint8List.fromList(img.encodeJpg(composed, quality: 92));
+    } finally {
+      if (shouldRestoreSelection) {
+        drawingNotifier.selectShape(currentSelectedId);
+      }
     }
-
-    final image = await boundary.toImage(pixelRatio: pixelRatio);
-
-    if (!asJpeg) {
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      return byteData?.buffer.asUint8List();
-    }
-
-    final pngData = await image.toByteData(format: ui.ImageByteFormat.png);
-    if (pngData == null) {
-      return null;
-    }
-
-    final overlay = img.decodePng(pngData.buffer.asUint8List());
-    if (overlay == null) {
-      return null;
-    }
-
-    final composed = img.Image(width: image.width, height: image.height);
-    img.fill(
-      composed,
-      color: img.ColorRgba8(
-        (background.r * 255.0).round().clamp(0, 255),
-        (background.g * 255.0).round().clamp(0, 255),
-        (background.b * 255.0).round().clamp(0, 255),
-        255,
-      ),
-    );
-    img.compositeImage(composed, overlay);
-
-    return Uint8List.fromList(img.encodeJpg(composed, quality: 92));
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
@@ -129,6 +140,17 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       setState(() {
         _isShiftPressed = pressed;
       });
+
+      if (!pressed) {
+        _resizeLockAxis = null;
+      } else if (_dragMode == _DragMode.resize &&
+          _resizeFixedCorner != null &&
+          _resizeRawMovingCorner != null) {
+        _resizeLockAxis = _pickResizeAxis(
+          _resizeFixedCorner!,
+          _resizeRawMovingCorner!,
+        );
+      }
     }
 
     return KeyEventResult.handled;
@@ -161,6 +183,8 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     ref
         .read(drawingBoardNotifierProvider.notifier)
         .selectShape(hitShape?.id);
+
+    _syncToolPaletteToShape(hitShape);
   }
 
   void _handlePanStart(DragStartDetails details) {
@@ -195,9 +219,41 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       if (_dragMode == _DragMode.move) {
         drawingBoardNotifier.updateSelectedShape(selectedShape.translate(delta));
       } else if (_dragMode == _DragMode.resize && _resizeCorner != null) {
-        drawingBoardNotifier.updateSelectedShape(
-          selectedShape.resize(delta, _resizeCorner!),
-        );
+        if (selectedShape is TwoPointShape &&
+            _resizeFixedCorner != null &&
+            _resizeRawMovingCorner != null) {
+          final rawMovingCorner = _resizeRawMovingCorner! + delta;
+          _resizeRawMovingCorner = rawMovingCorner;
+
+          final bool shouldLock =
+              _isShiftPressed && _shouldLockAspect(selectedShape);
+          if (!shouldLock) {
+            _resizeLockAxis = null;
+          }
+
+          final lockAxis = shouldLock
+              ? (_resizeLockAxis ??
+                  _pickResizeAxis(_resizeFixedCorner!, rawMovingCorner))
+              : null;
+
+          _resizeLockAxis = lockAxis;
+
+          final newMovingCorner = lockAxis == null
+              ? rawMovingCorner
+              : _lockAspect(_resizeFixedCorner!, rawMovingCorner, lockAxis);
+
+          _resizeMovingCorner = newMovingCorner;
+          drawingBoardNotifier.updateSelectedShape(
+            selectedShape.resizeFromAnchors(
+              fixedCorner: _resizeFixedCorner!,
+              movingCorner: newMovingCorner,
+            ),
+          );
+        } else {
+          drawingBoardNotifier.updateSelectedShape(
+            selectedShape.resize(delta, _resizeCorner!),
+          );
+        }
       }
 
       return;
@@ -222,6 +278,10 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       }
       _dragMode = _DragMode.none;
       _resizeCorner = null;
+      _resizeFixedCorner = null;
+      _resizeMovingCorner = null;
+      _resizeRawMovingCorner = null;
+      _resizeLockAxis = null;
       return;
     }
 
@@ -266,6 +326,10 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
   ) {
     _dragMode = _DragMode.none;
     _resizeCorner = null;
+    _resizeFixedCorner = null;
+    _resizeMovingCorner = null;
+    _resizeRawMovingCorner = null;
+    _resizeLockAxis = null;
 
     final selectedShape = ref.read(drawingBoardNotifierProvider).selectedShape;
     if (selectedShape == null) {
@@ -277,6 +341,16 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     if (hitCorner != null) {
       _dragMode = _DragMode.resize;
       _resizeCorner = hitCorner;
+      final shapeBounds = _shapeBounds(selectedShape);
+      _resizeMovingCorner = _cornerOffset(shapeBounds, hitCorner);
+      _resizeRawMovingCorner = _resizeMovingCorner;
+      _resizeFixedCorner = _cornerOffset(
+        shapeBounds,
+        _oppositeCorner(hitCorner),
+      );
+      _resizeLockAxis = _isShiftPressed
+          ? _pickResizeAxis(_resizeFixedCorner!, _resizeRawMovingCorner!)
+          : null;
       drawingBoardNotifier.beginTransform();
       return;
     }
@@ -286,9 +360,67 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       drawingBoardNotifier.beginTransform();
     }
   }
+
+  bool _shouldLockAspect(BaseShape shape) {
+    return shape is RectangleShape ||
+        shape is OvalShape ||
+        shape is SquareShape ||
+        shape is CircleShape;
+  }
+
+  _ResizeAxis _pickResizeAxis(Offset fixedCorner, Offset movingCorner) {
+    final dx = movingCorner.dx - fixedCorner.dx;
+    final dy = movingCorner.dy - fixedCorner.dy;
+    return dx.abs() >= dy.abs() ? _ResizeAxis.horizontal : _ResizeAxis.vertical;
+  }
+
+  Offset _lockAspect(
+    Offset fixedCorner,
+    Offset movingCorner,
+    _ResizeAxis lockAxis,
+  ) {
+    final dx = movingCorner.dx - fixedCorner.dx;
+    final dy = movingCorner.dy - fixedCorner.dy;
+    if (dx == 0 || dy == 0) {
+      return movingCorner;
+    }
+
+    final size = lockAxis == _ResizeAxis.horizontal ? dx.abs() : dy.abs();
+    final signX = dx >= 0 ? 1.0 : -1.0;
+    final signY = dy >= 0 ? 1.0 : -1.0;
+
+    return Offset(
+      fixedCorner.dx + (signX * size),
+      fixedCorner.dy + (signY * size),
+    );
+  }
+
+  void _syncToolPaletteToShape(BaseShape? shape) {
+    if (shape == null) {
+      return;
+    }
+
+    final toolSelectionNotifier = ref.read(
+      toolSelectionNotifierProvider.notifier,
+    );
+
+    toolSelectionNotifier.updateStrokeColor(shape.strokeColor);
+    toolSelectionNotifier.updateStrokeWidth(shape.strokeWidth);
+
+    if (shape is TwoPointShape && shape.fillColor != null) {
+      toolSelectionNotifier.updateFillColor(shape.fillColor!);
+    }
+
+    final shapeType = _shapeTypeFor(shape);
+    if (shapeType != null) {
+      toolSelectionNotifier.selectShapeType(shapeType);
+    }
+  }
 }
 
 enum _DragMode { none, move, resize }
+
+enum _ResizeAxis { horizontal, vertical }
 
 // ---------------------------------------------------------------------------
 // Text input dialog shown after drawing a TextShape bounding box
@@ -372,14 +504,13 @@ class CanvasPainter extends CustomPainter {
     if (activeTempShape != null) {
       _drawShape(canvas, activeTempShape);
     }
+    if (needsLayer) {
+      canvas.restore();
+    }
 
     final selectedShape = state.selectedShape;
     if (selectedShape != null) {
       _drawSelection(canvas, selectedShape);
-    }
-
-    if (needsLayer) {
-      canvas.restore();
     }
   }
 
@@ -634,6 +765,9 @@ class CanvasPainter extends CustomPainter {
 
 BaseShape? _hitTestShapes(List<BaseShape> shapes, Offset point) {
   for (final shape in shapes.reversed) {
+    if (shape is EraserShape) {
+      continue;
+    }
     if (shape.contains(point)) {
       return shape;
     }
@@ -696,12 +830,34 @@ Rect _shapeBounds(BaseShape shape) {
   return Rect.zero;
 }
 
+ShapeType? _shapeTypeFor(BaseShape shape) {
+  return switch (shape) {
+    RectangleShape() => ShapeType.rectangle,
+    SquareShape() => ShapeType.rectangle,
+    OvalShape() => ShapeType.oval,
+    CircleShape() => ShapeType.oval,
+    LineShape() => ShapeType.line,
+    ArrowShape() => ShapeType.arrow,
+    TextShape() => ShapeType.text,
+    _ => null,
+  };
+}
+
 Offset _cornerOffset(Rect bounds, ResizeCorner corner) {
   return switch (corner) {
     ResizeCorner.topLeft => bounds.topLeft,
     ResizeCorner.topRight => bounds.topRight,
     ResizeCorner.bottomLeft => bounds.bottomLeft,
     ResizeCorner.bottomRight => bounds.bottomRight,
+  };
+}
+
+ResizeCorner _oppositeCorner(ResizeCorner corner) {
+  return switch (corner) {
+    ResizeCorner.topLeft => ResizeCorner.bottomRight,
+    ResizeCorner.topRight => ResizeCorner.bottomLeft,
+    ResizeCorner.bottomLeft => ResizeCorner.topRight,
+    ResizeCorner.bottomRight => ResizeCorner.topLeft,
   };
 }
 
