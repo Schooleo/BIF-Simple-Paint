@@ -62,7 +62,9 @@ class CanvasArea extends ConsumerWidget {
             return;
           }
 
-          ref.read(drawingBoardNotifierProvider.notifier).loadFromBytes(bytes);
+          await ref
+              .read(drawingBoardNotifierProvider.notifier)
+              .loadFromBytes(bytes);
         },
         child: Stack(
           children: <Widget>[

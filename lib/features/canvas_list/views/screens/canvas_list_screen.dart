@@ -112,16 +112,39 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final shouldNavigate = MediaQuery.sizeOf(context).width < 800;
+    final repository = ref.read(canvasListRepositoryProvider);
 
     try {
-      final repository = ref.read(canvasListRepositoryProvider);
+      final exists = await repository.canvasFileExists(metadata.filePath);
+      if (!exists) {
+        if (!mounted) {
+          return;
+        }
+
+        messenger.showSnackBar(
+          SnackBar(content: Text('${metadata.name} file is missing.')),
+        );
+        return;
+      }
+
       final bytes = await repository.loadCanvasBytes(metadata.filePath);
       if (!mounted) {
         return;
       }
 
       final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
-      await drawingNotifier.loadFromBytes(bytes);
+      final failure = await drawingNotifier.loadFromBytes(bytes);
+      if (failure != null) {
+        if (!mounted) {
+          return;
+        }
+
+        messenger.showSnackBar(
+          SnackBar(content: Text(_loadFailureMessage(metadata.name, failure))),
+        );
+        return;
+      }
+
       drawingNotifier.setCurrentFilePath(
         metadata.filePath,
         canvasId: metadata.id,
@@ -143,6 +166,15 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
       messenger.showSnackBar(
         SnackBar(content: Text('Unable to open ${metadata.name}.')),
       );
+    }
+  }
+
+  String _loadFailureMessage(String canvasName, CanvasLoadFailure failure) {
+    switch (failure) {
+      case CanvasLoadFailure.unsupportedVersion:
+        return 'Unsupported file version for $canvasName.';
+      case CanvasLoadFailure.corruptedFile:
+        return '$canvasName is corrupted and can\'t be opened.';
     }
   }
 

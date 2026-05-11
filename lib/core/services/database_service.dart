@@ -104,6 +104,14 @@ class DatabaseService {
     return File(filePath).readAsBytes();
   }
 
+  Future<bool> canvasFileExists(String filePath) async {
+    if (filePath.trim().isEmpty) {
+      return false;
+    }
+
+    return File(filePath).exists();
+  }
+
   Future<List<Map<String, Object?>>> _readMetadataEntries() async {
     final file = await _metadataFile();
     if (!await file.exists()) {
