@@ -36,6 +36,8 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
   ResizeCorner? _resizeCorner;
   Offset? _resizeFixedCorner;
   Offset? _resizeMovingCorner;
+  Offset? _resizeRawMovingCorner;
+  _ResizeAxis? _resizeLockAxis;
   bool _isShiftPressed = false;
   final FocusNode _focusNode = FocusNode();
   final GlobalKey _canvasKey = GlobalKey();
@@ -138,6 +140,17 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       setState(() {
         _isShiftPressed = pressed;
       });
+
+      if (!pressed) {
+        _resizeLockAxis = null;
+      } else if (_dragMode == _DragMode.resize &&
+          _resizeFixedCorner != null &&
+          _resizeRawMovingCorner != null) {
+        _resizeLockAxis = _pickResizeAxis(
+          _resizeFixedCorner!,
+          _resizeRawMovingCorner!,
+        );
+      }
     }
 
     return KeyEventResult.handled;
@@ -170,6 +183,8 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     ref
         .read(drawingBoardNotifierProvider.notifier)
         .selectShape(hitShape?.id);
+
+    _syncToolPaletteToShape(hitShape);
   }
 
   void _handlePanStart(DragStartDetails details) {
@@ -206,8 +221,27 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       } else if (_dragMode == _DragMode.resize && _resizeCorner != null) {
         if (selectedShape is TwoPointShape &&
             _resizeFixedCorner != null &&
-            _resizeMovingCorner != null) {
-          final newMovingCorner = _resizeMovingCorner! + delta;
+            _resizeRawMovingCorner != null) {
+          final rawMovingCorner = _resizeRawMovingCorner! + delta;
+          _resizeRawMovingCorner = rawMovingCorner;
+
+          final bool shouldLock =
+              _isShiftPressed && _shouldLockAspect(selectedShape);
+          if (!shouldLock) {
+            _resizeLockAxis = null;
+          }
+
+          final lockAxis = shouldLock
+              ? (_resizeLockAxis ??
+                  _pickResizeAxis(_resizeFixedCorner!, rawMovingCorner))
+              : null;
+
+          _resizeLockAxis = lockAxis;
+
+          final newMovingCorner = lockAxis == null
+              ? rawMovingCorner
+              : _lockAspect(_resizeFixedCorner!, rawMovingCorner, lockAxis);
+
           _resizeMovingCorner = newMovingCorner;
           drawingBoardNotifier.updateSelectedShape(
             selectedShape.resizeFromAnchors(
@@ -246,6 +280,8 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       _resizeCorner = null;
       _resizeFixedCorner = null;
       _resizeMovingCorner = null;
+      _resizeRawMovingCorner = null;
+      _resizeLockAxis = null;
       return;
     }
 
@@ -292,6 +328,8 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     _resizeCorner = null;
     _resizeFixedCorner = null;
     _resizeMovingCorner = null;
+    _resizeRawMovingCorner = null;
+    _resizeLockAxis = null;
 
     final selectedShape = ref.read(drawingBoardNotifierProvider).selectedShape;
     if (selectedShape == null) {
@@ -305,10 +343,14 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       _resizeCorner = hitCorner;
       final shapeBounds = _shapeBounds(selectedShape);
       _resizeMovingCorner = _cornerOffset(shapeBounds, hitCorner);
+      _resizeRawMovingCorner = _resizeMovingCorner;
       _resizeFixedCorner = _cornerOffset(
         shapeBounds,
         _oppositeCorner(hitCorner),
       );
+      _resizeLockAxis = _isShiftPressed
+          ? _pickResizeAxis(_resizeFixedCorner!, _resizeRawMovingCorner!)
+          : null;
       drawingBoardNotifier.beginTransform();
       return;
     }
@@ -318,9 +360,67 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       drawingBoardNotifier.beginTransform();
     }
   }
+
+  bool _shouldLockAspect(BaseShape shape) {
+    return shape is RectangleShape ||
+        shape is OvalShape ||
+        shape is SquareShape ||
+        shape is CircleShape;
+  }
+
+  _ResizeAxis _pickResizeAxis(Offset fixedCorner, Offset movingCorner) {
+    final dx = movingCorner.dx - fixedCorner.dx;
+    final dy = movingCorner.dy - fixedCorner.dy;
+    return dx.abs() >= dy.abs() ? _ResizeAxis.horizontal : _ResizeAxis.vertical;
+  }
+
+  Offset _lockAspect(
+    Offset fixedCorner,
+    Offset movingCorner,
+    _ResizeAxis lockAxis,
+  ) {
+    final dx = movingCorner.dx - fixedCorner.dx;
+    final dy = movingCorner.dy - fixedCorner.dy;
+    if (dx == 0 || dy == 0) {
+      return movingCorner;
+    }
+
+    final size = lockAxis == _ResizeAxis.horizontal ? dx.abs() : dy.abs();
+    final signX = dx >= 0 ? 1.0 : -1.0;
+    final signY = dy >= 0 ? 1.0 : -1.0;
+
+    return Offset(
+      fixedCorner.dx + (signX * size),
+      fixedCorner.dy + (signY * size),
+    );
+  }
+
+  void _syncToolPaletteToShape(BaseShape? shape) {
+    if (shape == null) {
+      return;
+    }
+
+    final toolSelectionNotifier = ref.read(
+      toolSelectionNotifierProvider.notifier,
+    );
+
+    toolSelectionNotifier.updateStrokeColor(shape.strokeColor);
+    toolSelectionNotifier.updateStrokeWidth(shape.strokeWidth);
+
+    if (shape is TwoPointShape && shape.fillColor != null) {
+      toolSelectionNotifier.updateFillColor(shape.fillColor!);
+    }
+
+    final shapeType = _shapeTypeFor(shape);
+    if (shapeType != null) {
+      toolSelectionNotifier.selectShapeType(shapeType);
+    }
+  }
 }
 
 enum _DragMode { none, move, resize }
+
+enum _ResizeAxis { horizontal, vertical }
 
 // ---------------------------------------------------------------------------
 // Text input dialog shown after drawing a TextShape bounding box
@@ -728,6 +828,19 @@ Rect _shapeBounds(BaseShape shape) {
   }
 
   return Rect.zero;
+}
+
+ShapeType? _shapeTypeFor(BaseShape shape) {
+  return switch (shape) {
+    RectangleShape() => ShapeType.rectangle,
+    SquareShape() => ShapeType.rectangle,
+    OvalShape() => ShapeType.oval,
+    CircleShape() => ShapeType.oval,
+    LineShape() => ShapeType.line,
+    ArrowShape() => ShapeType.arrow,
+    TextShape() => ShapeType.text,
+    _ => null,
+  };
 }
 
 Offset _cornerOffset(Rect bounds, ResizeCorner corner) {
