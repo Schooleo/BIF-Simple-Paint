@@ -177,26 +177,25 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
   Future<void> _saveCanvas(BuildContext context) async {
     final drawingState = ref.read(drawingBoardNotifierProvider);
     final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
-    String? targetPath = drawingState.currentFilePath;
-
-    if (targetPath == null || targetPath.isEmpty) {
-      final suggestedName = _ensureMyptExtension(
-        drawingState.currentCanvasName.trim().isEmpty
-            ? 'untitled'
-            : drawingState.currentCanvasName,
-      );
-      final pickedPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save canvas',
-        fileName: suggestedName,
-        type: FileType.custom,
-        allowedExtensions: const ['mypt'],
-      );
-      if (pickedPath == null) {
-        return;
-      }
-
-      targetPath = _ensureMyptExtension(pickedPath);
+    final fallbackName = drawingState.currentCanvasName.trim().isEmpty
+        ? 'untitled'
+        : drawingState.currentCanvasName;
+    final suggestedName = _ensureMyptExtension(
+      drawingState.currentFilePath?.isNotEmpty == true
+          ? _fileNameFromPath(drawingState.currentFilePath!)
+          : fallbackName,
+    );
+    final pickedPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save canvas',
+      fileName: suggestedName,
+      type: FileType.custom,
+      allowedExtensions: const ['mypt'],
+    );
+    if (pickedPath == null) {
+      return;
     }
+
+    final targetPath = _ensureMyptExtension(pickedPath);
 
     try {
       final resolvedPath = await drawingNotifier.saveToFilePath(targetPath);

@@ -185,6 +185,15 @@ class DatabaseService {
     List<Map<String, Object?>> entries,
     Map<String, Object?> normalized,
   ) {
+    final normalizedFilePath = _stringValue(normalized[filePathKey]).trim();
+    if (normalizedFilePath.isNotEmpty) {
+      entries.removeWhere(
+        (entry) =>
+            entry[filePathKey] == normalizedFilePath &&
+            entry[idKey] != normalized[idKey],
+      );
+    }
+
     final index = entries.indexWhere(
       (entry) => entry[idKey] == normalized[idKey],
     );
