@@ -8,6 +8,15 @@ final toolSelectionNotifierProvider =
       ToolSelectionNotifier.new,
     );
 
+const double kMinStrokeWidth = 1.0;
+const double kMaxStrokeWidth = 30.0;
+const double kMaxEraserStrokeWidth = 60.0;
+const double kStrokeWidthStep = 0.5;
+
+double maxStrokeWidthForTool(ToolType toolType) {
+  return toolType == ToolType.eraser ? kMaxEraserStrokeWidth : kMaxStrokeWidth;
+}
+
 class ToolSelectionState {
   const ToolSelectionState({
     this.toolType = ToolType.brush,
@@ -45,7 +54,14 @@ class ToolSelectionNotifier extends Notifier<ToolSelectionState> {
   ToolSelectionState build() => const ToolSelectionState();
 
   void selectTool(ToolType toolType) {
-    state = state.copyWith(toolType: toolType);
+    final double maxWidth = maxStrokeWidthForTool(toolType);
+    final double clampedWidth = state.currentStrokeWidth
+        .clamp(kMinStrokeWidth, maxWidth)
+        .toDouble();
+    state = state.copyWith(
+      toolType: toolType,
+      currentStrokeWidth: clampedWidth,
+    );
   }
 
   void selectShapeType(ShapeType shapeType) {
@@ -61,6 +77,10 @@ class ToolSelectionNotifier extends Notifier<ToolSelectionState> {
   }
 
   void updateStrokeWidth(double strokeWidth) {
-    state = state.copyWith(currentStrokeWidth: strokeWidth);
+    final double maxWidth = maxStrokeWidthForTool(state.toolType);
+    final double clampedWidth = strokeWidth
+        .clamp(kMinStrokeWidth, maxWidth)
+        .toDouble();
+    state = state.copyWith(currentStrokeWidth: clampedWidth);
   }
 }

@@ -2,29 +2,33 @@ import 'package:bif_simple_paint/core/theme/app_colors.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
+import 'package:bif_simple_paint/features/drawing_board/views/widgets/eraser_tool_icon.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ToolPalette extends ConsumerStatefulWidget {
-  const ToolPalette({super.key, this.onSave, this.onLoad, this.onExport});
+  const ToolPalette({
+    super.key,
+    this.onSave,
+    this.onLoad,
+    this.onExport,
+    this.onStrokePreviewChanged,
+  });
 
   final VoidCallback? onSave;
   final VoidCallback? onLoad;
   final VoidCallback? onExport;
+  final ValueChanged<double?>? onStrokePreviewChanged;
 
   @override
-  ConsumerState<ToolPalette> createState() => _ToolPaletteState();
+  ConsumerState<ToolPalette> createState() => ToolPaletteState();
 }
 
 const Duration _hoverDuration = Duration(milliseconds: 160);
 const Duration _selectDuration = Duration(milliseconds: 200);
 
-class _ToolPaletteState extends ConsumerState<ToolPalette> {
-  static const List<IconData> _tools = <IconData>[
-    Icons.near_me_outlined,
-    Icons.edit_outlined,
-    Icons.remove,
-  ];
+class ToolPaletteState extends ConsumerState<ToolPalette> {
   static const List<ToolType> _toolTypes = <ToolType>[
     ToolType.cursor,
     ToolType.brush,
@@ -63,7 +67,9 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
   int? _hoveredFillIndex;
   int? _hoveredToolIndex;
   int? _hoveredFileIndex;
+  int? _keyboardShapeIndex;
   bool _isShapeHovered = false;
+  bool _isShapeMenuOpen = false;
 
   @override
   Widget build(BuildContext context) {
@@ -107,20 +113,13 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
     final int selectedToolIndex = _toolTypes.indexOf(toolSelection.toolType);
     final bool isShapeSelected = toolSelection.toolType == ToolType.shape;
     final double strokeWidth = toolSelection.currentStrokeWidth;
-    final List<_FileAction> fileActions = <_FileAction>[
-      _FileAction(
-        label: 'Save',
-        icon: Icons.save_outlined,
-        onTap: widget.onSave,
-      ),
-      _FileAction(label: 'Load', icon: Icons.folder_open, onTap: widget.onLoad),
-      _FileAction(
-        label: 'Export',
-        icon: Icons.ios_share,
-        onTap: widget.onExport,
-      ),
-    ];
-    final List<_FileAction> historyActions = <_FileAction>[
+    final double maxStrokeWidth = maxStrokeWidthForTool(toolSelection.toolType);
+    final int strokeDivisions =
+        ((maxStrokeWidth - kMinStrokeWidth) / kStrokeWidthStep).round();
+    final double clampedStrokeWidth = strokeWidth
+        .clamp(kMinStrokeWidth, maxStrokeWidth)
+        .toDouble();
+    final List<_FileAction> otherActions = <_FileAction>[
       _FileAction(
         label: 'Undo',
         icon: Icons.undo,
@@ -130,6 +129,11 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
         label: 'Redo',
         icon: Icons.redo,
         onTap: drawingState.canRedo ? drawingBoardNotifier.redo : null,
+      ),
+      _FileAction(
+        label: 'Export',
+        icon: Icons.ios_share,
+        onTap: widget.onExport,
       ),
     ];
 
@@ -143,7 +147,7 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
           shadowColor: colors.shadowColor,
           borderRadius: BorderRadius.circular(20),
           child: Container(
-            width: 280,
+            width: 320,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
@@ -155,35 +159,25 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
               children: <Widget>[
                 _SectionTitle(title: 'STROKE WIDTH', colors: colors),
                 const SizedBox(height: 8),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Tooltip(
-                        message: 'Stroke width',
-                        child: Slider(
-                          value: strokeWidth,
-                          min: 1,
-                          max: 12,
-                          onChanged: (double value) {
-                            toolSelectionNotifier.updateStrokeWidth(value);
-                            if (isCursor) {
-                              drawingBoardNotifier.updateSelectedShapeStyle(
-                                strokeWidth: value,
-                              );
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${strokeWidth.round()}px',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: colors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+                Tooltip(
+                  message: 'Stroke width',
+                  child: Slider(
+                    value: clampedStrokeWidth,
+                    min: kMinStrokeWidth,
+                    max: maxStrokeWidth,
+                    divisions: strokeDivisions,
+                    onChangeStart: _handleStrokePreviewStart,
+                    onChangeEnd: _handleStrokePreviewEnd,
+                    onChanged: (double value) {
+                      toolSelectionNotifier.updateStrokeWidth(value);
+                      widget.onStrokePreviewChanged?.call(value);
+                      if (isCursor) {
+                        drawingBoardNotifier.updateSelectedShapeStyle(
+                          strokeWidth: value,
+                        );
+                      }
+                    },
+                  ),
                 ),
                 const SizedBox(height: 16),
                 _SectionTitle(title: 'STROKE COLOR', colors: colors),
@@ -238,7 +232,7 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
                 const SizedBox(height: 10),
                 Row(
                   children: <Widget>[
-                    ...List<Widget>.generate(_tools.length, (int index) {
+                    ...List<Widget>.generate(_toolTypes.length, (int index) {
                       final bool isSelected = selectedToolIndex == index;
                       final bool isHovered = _hoveredToolIndex == index;
                       final Color background = isSelected
@@ -281,16 +275,13 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
                               ),
                               child: InkWell(
                                 onTap: () {
-                                  toolSelectionNotifier.selectTool(
-                                    _toolTypes[index],
-                                  );
+                                  selectToolShortcut(_toolTypes[index]);
                                 },
                                 borderRadius: BorderRadius.circular(14),
                                 child: Center(
-                                  child: Icon(
-                                    _tools[index],
+                                  child: _toolIcon(
+                                    _toolTypes[index],
                                     color: iconColor,
-                                    size: 20,
                                   ),
                                 ),
                               ),
@@ -300,7 +291,6 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
                       );
                     }),
                     _buildShapeMenu(
-                      context,
                       colors,
                       isShapeSelected: isShapeSelected,
                       selectedShapeIndex: selectedShapeIndex,
@@ -313,14 +303,25 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
                     ),
                   ],
                 ),
+                if (_isShapeMenuOpen) ...<Widget>[
+                  const SizedBox(height: 12),
+                  _DesktopShapeMenu(
+                    colors: colors,
+                    options: _shapeOptions,
+                    selectedIndex: _keyboardShapeIndex ?? selectedShapeIndex,
+                    onSelected: (int index) {
+                      _selectShapeIndex(index);
+                    },
+                  ),
+                ],
                 const SizedBox(height: 18),
-                _SectionTitle(title: 'FILE', colors: colors),
+                _SectionTitle(title: 'OTHER', colors: colors),
                 const SizedBox(height: 10),
                 Row(
-                  children: List<Widget>.generate(fileActions.length, (
+                  children: List<Widget>.generate(otherActions.length, (
                     int index,
                   ) {
-                    final _FileAction action = fileActions[index];
+                    final _FileAction action = otherActions[index];
                     final bool isEnabled = action.onTap != null;
                     final bool isHovered = _hoveredFileIndex == index;
                     final Color background = isHovered
@@ -372,48 +373,6 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
                     );
                   }),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: List<Widget>.generate(historyActions.length, (
-                    int index,
-                  ) {
-                    final _FileAction action = historyActions[index];
-                    final bool isEnabled = action.onTap != null;
-                    final Color background = colors.surfaceSecondary;
-                    final Color iconColor = isEnabled
-                        ? colors.iconPrimary
-                        : colors.iconPrimary.withValues(alpha: 0.4);
-
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: Tooltip(
-                        message: action.label,
-                        child: AnimatedContainer(
-                          duration: _hoverDuration,
-                          curve: Curves.easeOutCubic,
-                          height: 44,
-                          width: 44,
-                          decoration: BoxDecoration(
-                            color: background,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: colors.borderSubtle),
-                          ),
-                          child: InkWell(
-                            onTap: action.onTap,
-                            borderRadius: BorderRadius.circular(14),
-                            child: Center(
-                              child: Icon(
-                                action.icon,
-                                color: iconColor,
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
               ],
             ),
           ),
@@ -422,8 +381,86 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
     );
   }
 
+  void selectToolShortcut(ToolType toolType) {
+    ref.read(toolSelectionNotifierProvider.notifier).selectTool(toolType);
+    if (_isShapeMenuOpen) {
+      setState(() {
+        _isShapeMenuOpen = false;
+      });
+    }
+  }
+
+  void openShapeMenuForKeyboard() {
+    final toolSelection = ref.read(toolSelectionNotifierProvider);
+    ref.read(toolSelectionNotifierProvider.notifier).selectTool(ToolType.shape);
+    setState(() {
+      _isShapeMenuOpen = true;
+      _keyboardShapeIndex = _indexForShapeType(toolSelection.shapeType);
+    });
+  }
+
+  bool handleShapeMenuShortcut(LogicalKeyboardKey key) {
+    if (!_isShapeMenuOpen) {
+      return false;
+    }
+
+    final currentIndex =
+        _keyboardShapeIndex ??
+        _indexForShapeType(ref.read(toolSelectionNotifierProvider).shapeType);
+
+    if (key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowUp) {
+      setState(() {
+        _keyboardShapeIndex =
+            (currentIndex - 1 + _shapeOptions.length) % _shapeOptions.length;
+      });
+      return true;
+    }
+
+    if (key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.arrowDown) {
+      setState(() {
+        _keyboardShapeIndex = (currentIndex + 1) % _shapeOptions.length;
+      });
+      return true;
+    }
+
+    if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter ||
+        key == LogicalKeyboardKey.space) {
+      _selectShapeIndex(currentIndex);
+      return true;
+    }
+
+    if (key == LogicalKeyboardKey.escape) {
+      setState(() {
+        _isShapeMenuOpen = false;
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  void _handleStrokePreviewStart(double value) {
+    widget.onStrokePreviewChanged?.call(value);
+  }
+
+  void _handleStrokePreviewEnd(double value) {
+    widget.onStrokePreviewChanged?.call(null);
+  }
+
+  void _selectShapeIndex(int index) {
+    final notifier = ref.read(toolSelectionNotifierProvider.notifier);
+    notifier.selectShapeType(_shapeOptions[index].shapeType);
+    notifier.selectTool(ToolType.shape);
+    setState(() {
+      _keyboardShapeIndex = index;
+      _isShapeMenuOpen = false;
+    });
+  }
+
   Widget _buildShapeMenu(
-    BuildContext context,
     AppColors colors, {
     required bool isShapeSelected,
     required int selectedShapeIndex,
@@ -466,40 +503,19 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
               color: isSelected ? colors.accentPrimary : colors.borderSubtle,
             ),
           ),
-          child: PopupMenuButton<int>(
-            tooltip: '',
-            padding: EdgeInsets.zero,
-            offset: const Offset(0, 48),
-            color: colors.surfaceFloating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: colors.borderSubtle),
-            ),
-            onSelected: (int index) {
-              onSelectShapeType(_shapeOptions[index].shapeType);
-              onSelectShape();
-            },
-            itemBuilder: (BuildContext context) {
-              return List<PopupMenuEntry<int>>.generate(_shapeOptions.length, (
-                int index,
-              ) {
-                final _ShapeOption option = _shapeOptions[index];
-                return PopupMenuItem<int>(
-                  value: index,
-                  child: Row(
-                    children: <Widget>[
-                      Icon(option.icon, size: 18, color: colors.iconPrimary),
-                      const SizedBox(width: 8),
-                      Text(
-                        option.label,
-                        style: Theme.of(context).textTheme.labelMedium
-                            ?.copyWith(color: colors.textPrimary),
-                      ),
-                    ],
-                  ),
-                );
+          child: InkWell(
+            onTap: () {
+              final nextOpen = !_isShapeMenuOpen;
+              setState(() {
+                _isShapeMenuOpen = nextOpen;
+                _keyboardShapeIndex = selectedShapeIndex;
               });
+              if (nextOpen) {
+                onSelectShapeType(_shapeOptions[selectedShapeIndex].shapeType);
+                onSelectShape();
+              }
             },
+            borderRadius: BorderRadius.circular(14),
             child: Center(
               child: Icon(selected.icon, color: iconColor, size: 20),
             ),
@@ -523,6 +539,15 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
     });
 
     return index == -1 ? 0 : index;
+  }
+
+  Widget _toolIcon(ToolType type, {required Color color}) {
+    return switch (type) {
+      ToolType.cursor => Icon(Icons.near_me_outlined, color: color, size: 20),
+      ToolType.brush => Icon(Icons.edit_outlined, color: color, size: 20),
+      ToolType.eraser => EraserToolIcon(color: color),
+      ToolType.shape => const SizedBox.shrink(),
+    };
   }
 
   String _toolLabel(ToolType type) {
@@ -549,6 +574,82 @@ class _SectionTitle extends StatelessWidget {
         color: colors.textSecondary,
         letterSpacing: 1.2,
         fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+class _DesktopShapeMenu extends StatelessWidget {
+  const _DesktopShapeMenu({
+    required this.colors,
+    required this.options,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final AppColors colors;
+  final List<_ShapeOption> options;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surfaceSecondary,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.borderSubtle),
+      ),
+      child: Column(
+        children: List<Widget>.generate(options.length, (int index) {
+          final option = options[index];
+          final isSelected = index == selectedIndex;
+
+          return InkWell(
+            onTap: () => onSelected(index),
+            borderRadius: BorderRadius.circular(14),
+            child: AnimatedContainer(
+              duration: _hoverDuration,
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? colors.accentPrimary.withValues(alpha: 0.18)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    option.icon,
+                    size: 18,
+                    color: isSelected
+                        ? colors.accentPrimary
+                        : colors.iconPrimary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      option.label,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: colors.textPrimary,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  if (isSelected)
+                    Icon(
+                      Icons.keyboard_return,
+                      size: 16,
+                      color: colors.accentPrimary,
+                    ),
+                ],
+              ),
+            ),
+          );
+        }),
       ),
     );
   }
@@ -609,11 +710,14 @@ class _ColorRow extends StatelessWidget {
                   customBorder: const CircleBorder(),
                   child: isTransparent
                       ? Center(
-                          child: Container(
-                            height: 2,
-                            width: 20,
-                            color: colors.error,
-                            transform: Matrix4.rotationZ(-0.6),
+                          child: Transform.translate(
+                            offset: const Offset(0, 2),
+                            child: Container(
+                              height: 2,
+                              width: 20,
+                              color: colors.error,
+                              transform: Matrix4.rotationZ(-0.6),
+                            ),
                           ),
                         )
                       : null,

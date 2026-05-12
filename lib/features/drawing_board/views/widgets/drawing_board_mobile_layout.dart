@@ -5,8 +5,11 @@ import 'package:bif_simple_paint/core/theme/app_colors.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
+import 'package:bif_simple_paint/features/drawing_board/views/widgets/canvas_title_field.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_board_tool_button.dart';
+import 'package:bif_simple_paint/features/drawing_board/views/widgets/eraser_tool_icon.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/interactive_canvas.dart';
+import 'package:bif_simple_paint/features/drawing_board/views/widgets/stroke_width_preview.dart';
 import 'package:gal/gal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,28 +27,14 @@ class MobileLayout extends ConsumerStatefulWidget {
 }
 
 class _MobileLayoutState extends ConsumerState<MobileLayout> {
-  ToolType _lastNonCursorTool = ToolType.brush;
   final GlobalKey<CanvasCapture> _canvasExportKey = GlobalKey<CanvasCapture>();
+  final StrokeWidthPreviewController _strokePreviewController =
+      StrokeWidthPreviewController();
 
   @override
-  void initState() {
-    super.initState();
-  }
-
-  void _toggleMode() {
-    final ToolSelectionState toolSelection = ref.read(
-      toolSelectionNotifierProvider,
-    );
-    final ToolSelectionNotifier notifier = ref.read(
-      toolSelectionNotifierProvider.notifier,
-    );
-
-    if (toolSelection.toolType == ToolType.cursor) {
-      notifier.selectTool(_lastNonCursorTool);
-    } else {
-      _lastNonCursorTool = toolSelection.toolType;
-      notifier.selectTool(ToolType.cursor);
-    }
+  void dispose() {
+    _strokePreviewController.dispose();
+    super.dispose();
   }
 
   Future<Uint8List?> _captureImage({bool asJpeg = false}) async {
@@ -55,14 +44,6 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<ToolSelectionState>(toolSelectionNotifierProvider, (
-      ToolSelectionState? previous,
-      ToolSelectionState next,
-    ) {
-      if (next.toolType != ToolType.cursor) {
-        _lastNonCursorTool = next.toolType;
-      }
-    });
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
     final ToolSelectionState toolSelection = ref.watch(
       toolSelectionNotifierProvider,
@@ -76,7 +57,11 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
         child: Stack(
           children: <Widget>[
             Positioned.fill(
-              child: MobileCanvasArea(canvasKey: _canvasExportKey),
+              child: MobileCanvasArea(
+                canvasKey: _canvasExportKey,
+                onViewportScaleChanged:
+                    _strokePreviewController.setViewportScale,
+              ),
             ),
             Positioned(
               top: 12,
@@ -84,6 +69,7 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
               right: 16,
               child: MobileTopBar(onCaptureImage: _captureImage),
             ),
+            StrokeWidthPreviewOverlay(controller: _strokePreviewController),
             const Positioned(right: 16, top: 120, child: MobileQuickActions()),
             AnimatedPositioned(
               duration: _animationDuration,
@@ -93,7 +79,7 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
               bottom: isSelectionMode ? 8 : 16,
               child: MobileFloatingToolbars(
                 isSelectionMode: isSelectionMode,
-                onToggleMode: _toggleMode,
+                strokePreviewController: _strokePreviewController,
               ),
             ),
           ],
@@ -111,12 +97,6 @@ class MobileTopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
-    final DrawingBoardState drawingState = ref.watch(
-      drawingBoardNotifierProvider,
-    );
-    final DrawingBoardNotifier drawingBoardNotifier = ref.read(
-      drawingBoardNotifierProvider.notifier,
-    );
     final Color background = colors.surfaceFloating;
     final Color border = colors.borderSubtle;
     final Color textColor = colors.textPrimary;
@@ -141,29 +121,14 @@ class MobileTopBar extends ConsumerWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              drawingState.currentCanvasName,
+            child: CanvasTitleField(
+              decoration: const InputDecoration.collapsed(hintText: 'Untitled'),
               style: Theme.of(
                 context,
               ).textTheme.titleSmall?.copyWith(color: textColor),
             ),
           ),
-          IconButton(
-            onPressed: drawingState.canUndo ? drawingBoardNotifier.undo : null,
-            icon: Icon(Icons.undo, color: iconColor, size: 18),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            tooltip: 'Undo',
-          ),
-          const SizedBox(width: 12),
-          IconButton(
-            onPressed: drawingState.canRedo ? drawingBoardNotifier.redo : null,
-            icon: Icon(Icons.redo, color: iconColor, size: 18),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            tooltip: 'Redo',
-          ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           IconButton(
             onPressed: () => _showExportSheet(context),
             icon: Icon(Icons.save_alt, color: iconColor, size: 18),
@@ -171,8 +136,6 @@ class MobileTopBar extends ConsumerWidget {
             constraints: const BoxConstraints(),
             tooltip: 'Export',
           ),
-          const SizedBox(width: 12),
-          Icon(Icons.more_vert, color: iconColor, size: 18),
         ],
       ),
     );
@@ -229,13 +192,21 @@ class MobileTopBar extends ConsumerWidget {
 }
 
 class MobileCanvasArea extends StatelessWidget {
-  const MobileCanvasArea({super.key, required this.canvasKey});
+  const MobileCanvasArea({
+    super.key,
+    required this.canvasKey,
+    this.onViewportScaleChanged,
+  });
 
   final GlobalKey<CanvasCapture> canvasKey;
+  final ValueChanged<double>? onViewportScaleChanged;
 
   @override
   Widget build(BuildContext context) {
-    return InteractiveCanvas(key: canvasKey);
+    return InteractiveCanvas(
+      key: canvasKey,
+      onViewportScaleChanged: onViewportScaleChanged,
+    );
   }
 }
 
@@ -270,11 +241,11 @@ class MobileFloatingToolbars extends ConsumerStatefulWidget {
   const MobileFloatingToolbars({
     super.key,
     required this.isSelectionMode,
-    required this.onToggleMode,
+    required this.strokePreviewController,
   });
 
   final bool isSelectionMode;
-  final VoidCallback onToggleMode;
+  final StrokeWidthPreviewController strokePreviewController;
 
   @override
   ConsumerState<MobileFloatingToolbars> createState() =>
@@ -283,6 +254,8 @@ class MobileFloatingToolbars extends ConsumerStatefulWidget {
 
 class _MobileFloatingToolbarsState
     extends ConsumerState<MobileFloatingToolbars> {
+  bool _isStylePanelExpanded = true;
+
   @override
   Widget build(BuildContext context) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
@@ -303,12 +276,31 @@ class _MobileFloatingToolbarsState
       colors.paletteGreen,
       colors.paletteAmber,
     ];
+    final List<Color> fillColors = <Color>[
+      AppColors.drawingFillTransparent,
+      colors.paletteBlue,
+      colors.paletteInk,
+      colors.paletteRed,
+      colors.paletteGreen,
+    ];
     final int selectedColorIndex = _indexForColor(
       paletteColors,
       toolSelection.currentStrokeColor,
     );
+    final int selectedFillIndex = _indexForColor(
+      fillColors,
+      toolSelection.currentFillColor,
+    );
     final int selectedShapeIndex = _indexForShapeType(toolSelection.shapeType);
     final double strokeWidth = toolSelection.currentStrokeWidth;
+    final double maxStrokeWidth = maxStrokeWidthForTool(toolSelection.toolType);
+    final int strokeDivisions =
+        ((maxStrokeWidth - kMinStrokeWidth) / kStrokeWidthStep).round();
+    final double clampedStrokeWidth = strokeWidth
+        .clamp(kMinStrokeWidth, maxStrokeWidth)
+        .toDouble();
+    final bool showStylePanel =
+        !widget.isSelectionMode && _isStylePanelExpanded;
 
     return SafeArea(
       top: false,
@@ -321,9 +313,8 @@ class _MobileFloatingToolbarsState
               duration: _animationDuration,
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
-              child: widget.isSelectionMode
-                  ? const SizedBox.shrink()
-                  : _FrostedPill(
+              child: showStylePanel
+                  ? _FrostedPill(
                       key: const ValueKey<String>('stroke-panel'),
                       colors: colors,
                       child: Column(
@@ -332,32 +323,50 @@ class _MobileFloatingToolbarsState
                           Row(
                             children: <Widget>[
                               Text(
-                                'STROKE',
+                                'STYLE',
                                 style: Theme.of(context).textTheme.labelSmall
                                     ?.copyWith(
                                       color: colors.textSecondary,
                                       letterSpacing: 1.1,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w700,
                                     ),
                               ),
                               const Spacer(),
-                              Text(
-                                '${strokeWidth.round()}px',
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(
-                                      color: colors.textSecondary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                              IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _isStylePanelExpanded = false;
+                                  });
+                                },
+                                icon: Icon(
+                                  Icons.close,
+                                  color: colors.iconPrimary,
+                                  size: 18,
+                                ),
+                                constraints: const BoxConstraints.tightFor(
+                                  width: 28,
+                                  height: 28,
+                                ),
+                                padding: EdgeInsets.zero,
+                                tooltip: 'Hide colors',
                               ),
                             ],
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           Slider(
-                            value: strokeWidth,
-                            min: 1,
-                            max: 12,
+                            value: clampedStrokeWidth,
+                            min: kMinStrokeWidth,
+                            max: maxStrokeWidth,
+                            divisions: strokeDivisions,
+                            onChangeStart: (double value) {
+                              widget.strokePreviewController.show(value);
+                            },
+                            onChangeEnd: (_) {
+                              widget.strokePreviewController.hide();
+                            },
                             onChanged: (double value) {
                               toolSelectionNotifier.updateStrokeWidth(value);
+                              widget.strokePreviewController.show(value);
                               if (isCursor) {
                                 drawingBoardNotifier.updateSelectedShapeStyle(
                                   strokeWidth: value,
@@ -366,27 +375,62 @@ class _MobileFloatingToolbarsState
                             },
                           ),
                           const SizedBox(height: 10),
-                          _ColorDotRow(
-                            colors: colors,
-                            swatches: paletteColors,
-                            selectedIndex: selectedColorIndex,
-                            onSelected: (int index) {
-                              final Color color = paletteColors[index];
-                              toolSelectionNotifier.updateStrokeColor(color);
-                              if (isCursor) {
-                                drawingBoardNotifier.updateSelectedShapeStyle(
-                                  strokeColor: color,
-                                );
-                              }
-                            },
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Expanded(
+                                child: _MobileColorSection(
+                                  title: 'Stroke',
+                                  colors: colors,
+                                  swatches: paletteColors,
+                                  selectedIndex: selectedColorIndex,
+                                  onSelected: (int index) {
+                                    final Color color = paletteColors[index];
+                                    toolSelectionNotifier.updateStrokeColor(
+                                      color,
+                                    );
+                                    if (isCursor) {
+                                      drawingBoardNotifier
+                                          .updateSelectedShapeStyle(
+                                            strokeColor: color,
+                                          );
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _MobileColorSection(
+                                  title: 'Fill',
+                                  colors: colors,
+                                  swatches: fillColors,
+                                  selectedIndex: selectedFillIndex,
+                                  showTransparent: true,
+                                  onSelected: (int index) {
+                                    final Color color = fillColors[index];
+                                    toolSelectionNotifier.updateFillColor(
+                                      color,
+                                    );
+                                    if (isCursor) {
+                                      drawingBoardNotifier
+                                          .updateSelectedShapeStyle(
+                                            fillColor: color,
+                                            updateFillColor: true,
+                                          );
+                                    }
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ),
+                    )
+                  : const SizedBox.shrink(),
             ),
             AnimatedOpacity(
               duration: _animationDuration,
-              opacity: widget.isSelectionMode ? 0 : 1,
+              opacity: showStylePanel ? 1 : 0,
               child: const SizedBox(height: 10),
             ),
             _FrostedPill(
@@ -394,32 +438,48 @@ class _MobileFloatingToolbarsState
               child: Row(
                 children: <Widget>[
                   _ToolChip(
-                    icon: Icons.near_me_outlined,
+                    icon: Icon(
+                      Icons.back_hand_outlined,
+                      color: toolSelection.toolType == ToolType.cursor
+                          ? colors.backgroundPrimary
+                          : colors.iconPrimary,
+                      size: 20,
+                    ),
                     isSelected: toolSelection.toolType == ToolType.cursor,
                     colors: colors,
                     onTap: () {
                       toolSelectionNotifier.selectTool(ToolType.cursor);
                     },
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   _ToolChip(
-                    icon: Icons.edit_outlined,
+                    icon: Icon(
+                      Icons.edit_outlined,
+                      color: toolSelection.toolType == ToolType.brush
+                          ? colors.backgroundPrimary
+                          : colors.iconPrimary,
+                      size: 20,
+                    ),
                     isSelected: toolSelection.toolType == ToolType.brush,
                     colors: colors,
                     onTap: () {
                       toolSelectionNotifier.selectTool(ToolType.brush);
                     },
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   _ToolChip(
-                    icon: Icons.remove,
+                    icon: EraserToolIcon(
+                      color: toolSelection.toolType == ToolType.eraser
+                          ? colors.backgroundPrimary
+                          : colors.iconPrimary,
+                    ),
                     isSelected: toolSelection.toolType == ToolType.eraser,
                     colors: colors,
                     onTap: () {
                       toolSelectionNotifier.selectTool(ToolType.eraser);
                     },
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   _ShapeMenu(
                     colors: colors,
                     isSelected: toolSelection.toolType == ToolType.shape,
@@ -432,16 +492,36 @@ class _MobileFloatingToolbarsState
                       toolSelectionNotifier.selectTool(ToolType.shape);
                     },
                   ),
-                  const Spacer(),
-                  _ToolChip(
-                    icon: widget.isSelectionMode
-                        ? Icons.select_all
-                        : Icons.pan_tool_alt,
-                    isSelected: widget.isSelectionMode,
-                    colors: colors,
-                    onTap: widget.onToggleMode,
-                  ),
                   const SizedBox(width: 8),
+                  _ToolChip(
+                    icon: Icon(
+                      _isStylePanelExpanded && !widget.isSelectionMode
+                          ? Icons.palette
+                          : Icons.palette_outlined,
+                      color: _isStylePanelExpanded && !widget.isSelectionMode
+                          ? colors.backgroundPrimary
+                          : colors.iconPrimary,
+                      size: 20,
+                    ),
+                    isSelected:
+                        _isStylePanelExpanded && !widget.isSelectionMode,
+                    colors: colors,
+                    onTap: () {
+                      if (widget.isSelectionMode) {
+                        return;
+                      }
+                      setState(() {
+                        _isStylePanelExpanded = !_isStylePanelExpanded;
+                      });
+                    },
+                  ),
+                  const Spacer(),
+                  Container(
+                    width: 1,
+                    height: 24,
+                    color: colors.borderSubtle,
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
                   _ActionChip(
                     icon: Icons.undo,
                     colors: colors,
@@ -510,22 +590,68 @@ class _FrostedPill extends StatelessWidget {
   }
 }
 
-class _ColorDotRow extends StatelessWidget {
-  const _ColorDotRow({
+class _MobileColorSection extends StatelessWidget {
+  const _MobileColorSection({
+    required this.title,
     required this.colors,
     required this.swatches,
     required this.selectedIndex,
     required this.onSelected,
+    this.showTransparent = false,
+  });
+
+  final String title;
+  final AppColors colors;
+  final List<Color> swatches;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final bool showTransparent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          title,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: colors.textSecondary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _ColorDotWrap(
+          colors: colors,
+          swatches: swatches,
+          selectedIndex: selectedIndex,
+          onSelected: onSelected,
+          showTransparent: showTransparent,
+        ),
+      ],
+    );
+  }
+}
+
+class _ColorDotWrap extends StatelessWidget {
+  const _ColorDotWrap({
+    required this.colors,
+    required this.swatches,
+    required this.selectedIndex,
+    required this.onSelected,
+    this.showTransparent = false,
   });
 
   final AppColors colors;
   final List<Color> swatches;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
+  final bool showTransparent;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
       children: List<Widget>.generate(swatches.length, (int index) {
         final bool isSelected = selectedIndex == index;
         final Color fill = swatches[index];
@@ -535,7 +661,7 @@ class _ColorDotRow extends StatelessWidget {
             : colors.borderSubtle;
 
         return Padding(
-          padding: const EdgeInsets.only(right: 8),
+          padding: EdgeInsets.zero,
           child: AnimatedContainer(
             duration: _animationDuration,
             curve: Curves.easeOutCubic,
@@ -551,11 +677,14 @@ class _ColorDotRow extends StatelessWidget {
               customBorder: const CircleBorder(),
               child: isTransparent
                   ? Center(
-                      child: Container(
-                        height: 2,
-                        width: 18,
-                        color: colors.error,
-                        transform: Matrix4.rotationZ(-0.6),
+                      child: Transform.translate(
+                        offset: const Offset(0, 2),
+                        child: Container(
+                          height: 2,
+                          width: 18,
+                          color: colors.error,
+                          transform: Matrix4.rotationZ(-0.6),
+                        ),
                       ),
                     )
                   : null,
@@ -575,7 +704,7 @@ class _ToolChip extends StatelessWidget {
     required this.onTap,
   });
 
-  final IconData icon;
+  final Widget icon;
   final bool isSelected;
   final AppColors colors;
   final VoidCallback onTap;
@@ -585,8 +714,8 @@ class _ToolChip extends StatelessWidget {
     return AnimatedContainer(
       duration: _animationDuration,
       curve: Curves.easeOutCubic,
-      height: 44,
-      width: 44,
+      height: 40,
+      width: 40,
       decoration: BoxDecoration(
         color: isSelected ? colors.accentPrimary : colors.surfaceSecondary,
         borderRadius: BorderRadius.circular(14),
@@ -597,11 +726,7 @@ class _ToolChip extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
-        child: Icon(
-          icon,
-          color: isSelected ? colors.backgroundPrimary : colors.iconPrimary,
-          size: 20,
-        ),
+        child: Center(child: icon),
       ),
     );
   }
@@ -719,7 +844,11 @@ class _ShapeMenu extends StatelessWidget {
       },
       child: AbsorbPointer(
         child: _ToolChip(
-          icon: selected.icon,
+          icon: Icon(
+            selected.icon,
+            color: isSelected ? colors.backgroundPrimary : colors.iconPrimary,
+            size: 20,
+          ),
           isSelected: isSelected,
           colors: colors,
           onTap: () {},
