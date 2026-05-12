@@ -57,9 +57,25 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
   final FocusNode _focusNode = FocusNode();
   final GlobalKey _canvasKey = GlobalKey();
   Offset? _lastMiddleMousePosition;
+  Offset? _eraserPreviewPosition;
+  ProviderSubscription<ToolSelectionState>? _toolSelectionSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _toolSelectionSubscription = ref.listenManual<ToolSelectionState>(
+      toolSelectionNotifierProvider,
+      (previous, next) {
+        if (next.toolType != ToolType.eraser) {
+          _clearEraserPreview();
+        }
+      },
+    );
+  }
 
   @override
   void dispose() {
+    _toolSelectionSubscription?.close();
     _focusNode.dispose();
     super.dispose();
   }
@@ -67,6 +83,15 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
   @override
   Widget build(BuildContext context) {
     final drawingState = ref.watch(drawingBoardNotifierProvider);
+    final toolSelection = ref.watch(toolSelectionNotifierProvider);
+    final AppColors colors = Theme.of(context).extension<AppColors>()!;
+    final bool showEraserPreview = toolSelection.toolType == ToolType.eraser;
+    final double? eraserPreviewDiameter = showEraserPreview
+        ? strokeWidthForTool(toolSelection, ToolType.eraser)
+        : null;
+    final Offset? eraserPreviewPosition = showEraserPreview
+        ? _eraserPreviewPosition
+        : null;
 
     return Focus(
       focusNode: _focusNode,
@@ -75,6 +100,9 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       child: Listener(
         onPointerDown: (event) {
           _activePointerCount += 1;
+          if (toolSelection.toolType == ToolType.eraser) {
+            _setEraserPreviewViewport(event.localPosition);
+          }
           if (event.kind == PointerDeviceKind.mouse &&
               event.buttons == kMiddleMouseButton) {
             _focusNode.requestFocus();
@@ -95,11 +123,13 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
           _activePointerCount = max(0, _activePointerCount - 1);
           _isMiddleMousePanning = false;
           _lastMiddleMousePosition = null;
+          _clearEraserPreview();
         },
         onPointerCancel: (_) {
           _activePointerCount = max(0, _activePointerCount - 1);
           _isMiddleMousePanning = false;
           _lastMiddleMousePosition = null;
+          _clearEraserPreview();
         },
         onPointerSignal: _handlePointerSignal,
         child: GestureDetector(
@@ -118,6 +148,9 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
                   painter: CanvasPainter(
                     state: drawingState,
                     viewportScale: _matrixScale(_viewTransform),
+                    eraserPreviewPosition: eraserPreviewPosition,
+                    eraserPreviewDiameter: eraserPreviewDiameter,
+                    eraserPreviewColor: colors.iconPrimary,
                   ),
                   child: const SizedBox.expand(),
                 ),
@@ -217,6 +250,9 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     );
     final canvasPoint = _toCanvasSpace(details.localFocalPoint);
     _lastCanvasFocalPoint = canvasPoint;
+    if (toolSelection.toolType == ToolType.eraser) {
+      _setEraserPreviewCanvas(canvasPoint);
+    }
 
     if (_activePointerCount >= 2) {
       _startMultiTouchGesture(
@@ -244,6 +280,9 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
       drawingBoardNotifierProvider.notifier,
     );
     final canvasPoint = _toCanvasSpace(details.localFocalPoint);
+    if (toolSelection.toolType == ToolType.eraser) {
+      _setEraserPreviewCanvas(canvasPoint);
+    }
 
     if (_activePointerCount >= 2) {
       if (_scaleGestureMode == _ScaleGestureMode.singleTouch) {
@@ -335,6 +374,9 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     final drawingBoardNotifier = ref.read(
       drawingBoardNotifierProvider.notifier,
     );
+    if (toolSelection.toolType == ToolType.eraser) {
+      _clearEraserPreview();
+    }
 
     if (_scaleGestureMode == _ScaleGestureMode.shapeScale) {
       drawingBoardNotifier.endTransform();
@@ -630,6 +672,28 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     return MatrixUtils.transformPoint(inverted, viewportPoint);
   }
 
+  void _setEraserPreviewViewport(Offset viewportPoint) {
+    _setEraserPreviewCanvas(_toCanvasSpace(viewportPoint));
+  }
+
+  void _setEraserPreviewCanvas(Offset canvasPoint) {
+    if (_eraserPreviewPosition == canvasPoint) {
+      return;
+    }
+    setState(() {
+      _eraserPreviewPosition = canvasPoint;
+    });
+  }
+
+  void _clearEraserPreview() {
+    if (_eraserPreviewPosition == null) {
+      return;
+    }
+    setState(() {
+      _eraserPreviewPosition = null;
+    });
+  }
+
   double _matrixScale(Matrix4 matrix) {
     return matrix.getMaxScaleOnAxis();
   }
@@ -692,7 +756,10 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
     );
 
     toolSelectionNotifier.updateStrokeColor(shape.strokeColor);
-    toolSelectionNotifier.updateStrokeWidth(shape.strokeWidth);
+    toolSelectionNotifier.updateStrokeWidthForTool(
+      shape is EraserShape ? ToolType.eraser : ToolType.brush,
+      shape.strokeWidth,
+    );
 
     if (shape is TwoPointShape && shape.fillColor != null) {
       toolSelectionNotifier.updateFillColor(shape.fillColor!);
@@ -771,10 +838,19 @@ class _TextInputDialogState extends State<_TextInputDialog> {
 // Canvas painter — dual-pass fill+stroke for all shapes
 // ---------------------------------------------------------------------------
 class CanvasPainter extends CustomPainter {
-  const CanvasPainter({required this.state, this.viewportScale = 1});
+  const CanvasPainter({
+    required this.state,
+    this.viewportScale = 1,
+    this.eraserPreviewPosition,
+    this.eraserPreviewDiameter,
+    this.eraserPreviewColor = _kSelectionColor,
+  });
 
   final DrawingBoardState state;
   final double viewportScale;
+  final Offset? eraserPreviewPosition;
+  final double? eraserPreviewDiameter;
+  final Color eraserPreviewColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -799,12 +875,28 @@ class CanvasPainter extends CustomPainter {
     if (selectedShape != null) {
       _drawSelection(canvas, selectedShape);
     }
+
+    if (eraserPreviewPosition != null && eraserPreviewDiameter != null) {
+      final previewPaint = Paint()
+        ..color = eraserPreviewColor.withValues(alpha: 0.9)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (2 / viewportScale).clamp(0.6, 3.0).toDouble()
+        ..isAntiAlias = true;
+      canvas.drawCircle(
+        eraserPreviewPosition!,
+        eraserPreviewDiameter! / 2,
+        previewPaint,
+      );
+    }
   }
 
   @override
   bool shouldRepaint(covariant CanvasPainter oldDelegate) {
     return oldDelegate.state != state ||
-        oldDelegate.viewportScale != viewportScale;
+        oldDelegate.viewportScale != viewportScale ||
+        oldDelegate.eraserPreviewPosition != eraserPreviewPosition ||
+        oldDelegate.eraserPreviewDiameter != eraserPreviewDiameter ||
+        oldDelegate.eraserPreviewColor != eraserPreviewColor;
   }
 
   void _drawShape(Canvas canvas, BaseShape shape) {

@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
+import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
+import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
+import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -56,6 +59,11 @@ class StrokeWidthPreviewOverlay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
     final toolSelection = ref.watch(toolSelectionNotifierProvider);
+    final drawingState = ref.watch(drawingBoardNotifierProvider);
+    final bool isEraser =
+        toolSelection.toolType == ToolType.eraser ||
+        (toolSelection.toolType == ToolType.cursor &&
+            drawingState.selectedShape is EraserShape);
 
     return IgnorePointer(
       child: Center(
@@ -97,7 +105,12 @@ class StrokeWidthPreviewOverlay extends ConsumerWidget {
                       height: dotDiameter,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: toolSelection.currentStrokeColor,
+                        color: isEraser
+                            ? Colors.transparent
+                            : toolSelection.currentStrokeColor,
+                        border: isEraser
+                            ? Border.all(color: colors.iconPrimary, width: 2)
+                            : null,
                       ),
                     ),
                   ),

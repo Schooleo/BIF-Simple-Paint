@@ -1,4 +1,5 @@
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
+import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
@@ -112,8 +113,15 @@ class ToolPaletteState extends ConsumerState<ToolPalette> {
     final int selectedShapeIndex = _indexForShapeType(toolSelection.shapeType);
     final int selectedToolIndex = _toolTypes.indexOf(toolSelection.toolType);
     final bool isShapeSelected = toolSelection.toolType == ToolType.shape;
-    final double strokeWidth = toolSelection.currentStrokeWidth;
-    final double maxStrokeWidth = maxStrokeWidthForTool(toolSelection.toolType);
+    final bool isEraserSelection =
+        toolSelection.toolType == ToolType.eraser ||
+        (toolSelection.toolType == ToolType.cursor &&
+            drawingState.selectedShape is EraserShape);
+    final ToolType widthTool = isEraserSelection
+        ? ToolType.eraser
+        : toolSelection.toolType;
+    final double strokeWidth = strokeWidthForTool(toolSelection, widthTool);
+    final double maxStrokeWidth = maxStrokeWidthForTool(widthTool);
     final int strokeDivisions =
         ((maxStrokeWidth - kMinStrokeWidth) / kStrokeWidthStep).round();
     final double clampedStrokeWidth = strokeWidth
@@ -169,7 +177,10 @@ class ToolPaletteState extends ConsumerState<ToolPalette> {
                     onChangeStart: _handleStrokePreviewStart,
                     onChangeEnd: _handleStrokePreviewEnd,
                     onChanged: (double value) {
-                      toolSelectionNotifier.updateStrokeWidth(value);
+                      toolSelectionNotifier.updateStrokeWidthForTool(
+                        widthTool,
+                        value,
+                      );
                       widget.onStrokePreviewChanged?.call(value);
                       if (isCursor) {
                         drawingBoardNotifier.updateSelectedShapeStyle(

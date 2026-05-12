@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
+import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
@@ -268,6 +269,9 @@ class _MobileFloatingToolbarsState
     final DrawingBoardNotifier drawingBoardNotifier = ref.read(
       drawingBoardNotifierProvider.notifier,
     );
+    final DrawingBoardState drawingState = ref.watch(
+      drawingBoardNotifierProvider,
+    );
     final bool isCursor = toolSelection.toolType == ToolType.cursor;
     final List<Color> paletteColors = <Color>[
       colors.paletteBlue,
@@ -292,8 +296,15 @@ class _MobileFloatingToolbarsState
       toolSelection.currentFillColor,
     );
     final int selectedShapeIndex = _indexForShapeType(toolSelection.shapeType);
-    final double strokeWidth = toolSelection.currentStrokeWidth;
-    final double maxStrokeWidth = maxStrokeWidthForTool(toolSelection.toolType);
+    final bool isEraserSelection =
+        toolSelection.toolType == ToolType.eraser ||
+        (toolSelection.toolType == ToolType.cursor &&
+            drawingState.selectedShape is EraserShape);
+    final ToolType widthTool = isEraserSelection
+        ? ToolType.eraser
+        : toolSelection.toolType;
+    final double strokeWidth = strokeWidthForTool(toolSelection, widthTool);
+    final double maxStrokeWidth = maxStrokeWidthForTool(widthTool);
     final int strokeDivisions =
         ((maxStrokeWidth - kMinStrokeWidth) / kStrokeWidthStep).round();
     final double clampedStrokeWidth = strokeWidth
@@ -365,7 +376,10 @@ class _MobileFloatingToolbarsState
                               widget.strokePreviewController.hide();
                             },
                             onChanged: (double value) {
-                              toolSelectionNotifier.updateStrokeWidth(value);
+                              toolSelectionNotifier.updateStrokeWidthForTool(
+                                widthTool,
+                                value,
+                              );
                               widget.strokePreviewController.show(value);
                               if (isCursor) {
                                 drawingBoardNotifier.updateSelectedShapeStyle(
