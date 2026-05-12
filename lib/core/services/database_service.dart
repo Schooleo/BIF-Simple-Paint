@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 final databaseServiceProvider = Provider<DatabaseService>(
   (ref) => DatabaseService(),
@@ -13,6 +14,7 @@ class DatabaseService {
     : _storageRootDirectory = storageRootDirectory;
 
   final Directory? _storageRootDirectory;
+  Directory? _cachedStorageDirectory;
 
   static const String idKey = 'id';
   static const String nameKey = 'name';
@@ -34,6 +36,28 @@ class DatabaseService {
     final entries = await _readMetadataEntries();
     _upsertEntry(entries, normalized);
     await _writeMetadataEntries(entries);
+  }
+
+  Future<void> updateCanvasName({
+    required String canvasId,
+    required String name,
+  }) async {
+    try {
+      final entries = await _readMetadataEntries();
+      final index = entries.indexWhere((entry) => entry[idKey] == canvasId);
+      if (index == -1) {
+        return;
+      }
+
+      final existing = Map<String, Object?>.from(entries[index]);
+      existing[nameKey] = name;
+      existing[lastEditedTimeKey] = DateTime.now().toIso8601String();
+
+      entries[index] = _normalizeMetadata(existing);
+      await _writeMetadataEntries(entries);
+    } catch (_) {
+      rethrow;
+    }
   }
 
   Future<void> deleteCanvasMetadata(String canvasId) async {
@@ -310,7 +334,7 @@ class DatabaseService {
   }
 
   Future<Directory> _storageDirectory() async {
-    final directory = _storageDirectorySync();
+    final directory = await _resolveStorageDirectory();
     if (!await directory.exists()) {
       await directory.create(recursive: true);
     }
@@ -323,10 +347,47 @@ class DatabaseService {
       return configuredDirectory;
     }
 
+    final cachedDirectory = _cachedStorageDirectory;
+    if (cachedDirectory != null) {
+      return cachedDirectory;
+    }
+
     final basePath = Platform.environment['HOME']?.trim().isNotEmpty == true
         ? Platform.environment['HOME']!.trim()
         : Directory.current.path;
     final separator = Platform.pathSeparator;
-    return Directory('$basePath$separator.bif_simple_paint');
+    final directory = Directory('$basePath$separator.bif_simple_paint');
+    _cachedStorageDirectory = directory;
+    return directory;
+  }
+
+  Future<Directory> _resolveStorageDirectory() async {
+    final configuredDirectory = _storageRootDirectory;
+    if (configuredDirectory != null) {
+      _cachedStorageDirectory = configuredDirectory;
+      return configuredDirectory;
+    }
+
+    final cachedDirectory = _cachedStorageDirectory;
+    if (cachedDirectory != null) {
+      return cachedDirectory;
+    }
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      final documents = await getApplicationDocumentsDirectory();
+      final directory = Directory(
+        '${documents.path}${Platform.pathSeparator}.bif_simple_paint',
+      );
+      _cachedStorageDirectory = directory;
+      return directory;
+    }
+
+    final basePath = Platform.environment['HOME']?.trim().isNotEmpty == true
+        ? Platform.environment['HOME']!.trim()
+        : Directory.current.path;
+    final separator = Platform.pathSeparator;
+    final directory = Directory('$basePath$separator.bif_simple_paint');
+    _cachedStorageDirectory = directory;
+    return directory;
   }
 }

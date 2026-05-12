@@ -33,6 +33,11 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
 
     return Scaffold(
       backgroundColor: background,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _createCanvas(context),
+        tooltip: 'New canvas',
+        child: const Icon(Icons.add),
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -82,6 +87,8 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
                                 key: ValueKey(metadata.id),
                                 viewData: viewData,
                                 onTap: () => _openCanvas(context, metadata),
+                                onRename: () =>
+                                    _renameCanvas(context, metadata),
                                 onDelete: () =>
                                     _deleteCanvas(context, metadata),
                               );
@@ -171,6 +178,30 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
     }
   }
 
+  Future<void> _createCanvas(BuildContext context) async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final shouldNavigate = MediaQuery.sizeOf(context).width < 800;
+    final success = await ref
+        .read(drawingBoardNotifierProvider.notifier)
+        .createNewCanvas();
+
+    if (!mounted) {
+      return;
+    }
+
+    if (!success) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Unable to create a new canvas.')),
+      );
+      return;
+    }
+
+    if (shouldNavigate) {
+      navigator.pushNamed(AppRouter.drawingBoardPath);
+    }
+  }
+
   String _loadFailureMessage(String canvasName, CanvasLoadFailure failure) {
     switch (failure) {
       case CanvasLoadFailure.unsupportedVersion:
@@ -184,15 +215,92 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
     BuildContext context,
     CanvasMetadata metadata,
   ) async {
-    await ref
+    final success = await ref
         .read(canvasListNotifierProvider.notifier)
         .deleteCanvas(metadata.id);
     if (!context.mounted) {
       return;
     }
 
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to remove ${metadata.name}.')),
+      );
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${metadata.name} removed from recent projects.')),
+    );
+  }
+
+  Future<void> _renameCanvas(
+    BuildContext context,
+    CanvasMetadata metadata,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    var draftName = metadata.name;
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Rename Canvas'),
+          content: TextFormField(
+            initialValue: draftName,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(hintText: 'Canvas title'),
+            onChanged: (value) {
+              draftName = value;
+            },
+            onFieldSubmitted: (value) =>
+                Navigator.of(dialogContext).pop(value),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(draftName),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (newName == null) {
+      return;
+    }
+
+    final trimmedName = newName.trim();
+    final resolvedName = trimmedName.isEmpty ? 'Untitled' : trimmedName;
+    final success = await ref
+        .read(canvasListNotifierProvider.notifier)
+        .renameCanvas(metadata.id, resolvedName);
+    if (!context.mounted) {
+      return;
+    }
+
+    if (!success) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Unable to rename ${metadata.name}.')),
+      );
+      return;
+    }
+
+    final activeCanvasId =
+      ref.read(drawingBoardNotifierProvider).currentCanvasId;
+    if (activeCanvasId == metadata.id) {
+      ref
+          .read(drawingBoardNotifierProvider.notifier)
+          .updateCanvasTitle(resolvedName);
+    }
+
+    messenger.showSnackBar(
+      SnackBar(content: Text('Renamed to $resolvedName.')),
     );
   }
 }

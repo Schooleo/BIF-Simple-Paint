@@ -61,14 +61,46 @@ class CanvasListNotifier extends Notifier<CanvasListState> {
     }
   }
 
-  Future<void> deleteCanvas(String canvasId) async {
+  Future<bool> deleteCanvas(String canvasId) async {
     final repository = ref.read(canvasListRepositoryProvider);
-    await repository.deleteCanvas(canvasId);
-    state = state.copyWith(
-      canvases: state.canvases
-          .where((canvas) => canvas.id != canvasId)
-          .toList(growable: false),
-    );
+    try {
+      await repository.deleteCanvas(canvasId);
+      state = state.copyWith(
+        canvases: state.canvases
+            .where((canvas) => canvas.id != canvasId)
+            .toList(growable: false),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> renameCanvas(String canvasId, String name) async {
+    final repository = ref.read(canvasListRepositoryProvider);
+    final trimmedName = name.trim();
+    final resolvedName = trimmedName.isEmpty ? 'Untitled' : trimmedName;
+    try {
+      await repository.renameCanvas(canvasId, resolvedName);
+      final now = DateTime.now();
+      state = state.copyWith(
+        canvases: state.canvases
+            .map((canvas) =>
+                canvas.id == canvasId
+                    ? CanvasMetadata(
+                        id: canvas.id,
+                        name: resolvedName,
+                        filePath: canvas.filePath,
+                        lastEditedTime: now,
+                        thumbnailData: canvas.thumbnailData,
+                      )
+                    : canvas)
+            .toList(growable: false),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   void setSearchQuery(String query) {

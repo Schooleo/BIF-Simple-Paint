@@ -192,15 +192,36 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
   }
 
   Future<void> _saveCanvas(BuildContext context) async {
-    final drawingState = ref.read(drawingBoardNotifierProvider);
     final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
-    final fallbackName = drawingState.currentCanvasName.trim().isEmpty
+    final drawingState = ref.read(drawingBoardNotifierProvider);
+    final isFirstSave = await drawingNotifier.isUsingDraftPath();
+    if (!context.mounted) {
+      return;
+    }
+    var canvasTitle = drawingState.currentCanvasName;
+    if (isFirstSave) {
+      final inputTitle = await _promptForCanvasTitle(context, canvasTitle);
+      if (!context.mounted) {
+        return;
+      }
+      if (inputTitle == null) {
+        return;
+      }
+
+      final trimmedTitle = inputTitle.trim();
+      final resolvedTitle =
+          trimmedTitle.isEmpty ? 'Untitled' : trimmedTitle;
+      drawingNotifier.updateCanvasTitle(resolvedTitle);
+      canvasTitle = resolvedTitle;
+    }
+
+    final fallbackName = canvasTitle.trim().isEmpty
         ? 'untitled'
-        : drawingState.currentCanvasName;
+        : canvasTitle;
     final suggestedName = _ensureMyptExtension(
-      drawingState.currentFilePath?.isNotEmpty == true
-          ? _fileNameFromPath(drawingState.currentFilePath!)
-          : fallbackName,
+      !isFirstSave && drawingState.currentFilePath?.isNotEmpty == true
+        ? _fileNameFromPath(drawingState.currentFilePath!)
+        : fallbackName,
     );
     final pickedPath = await FilePicker.platform.saveFile(
       dialogTitle: 'Save canvas',
@@ -288,6 +309,43 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
       return normalized;
     }
     return '$normalized.mypt';
+  }
+
+  Future<String?> _promptForCanvasTitle(
+    BuildContext context,
+    String currentTitle,
+  ) async {
+    final controller = TextEditingController(text: currentTitle);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Canvas Title'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(
+              hintText: 'Enter a title for this canvas',
+            ),
+            onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(controller.text),
+              child: const Text('Continue'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    return result;
   }
 
   String _fileNameFromPath(String path) {
