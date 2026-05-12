@@ -23,6 +23,10 @@ class CanvasListRepository {
     await databaseService.deleteCanvasMetadata(canvasId);
   }
 
+  Future<void> renameCanvas(String canvasId, String name) async {
+    await databaseService.updateCanvasName(canvasId: canvasId, name: name);
+  }
+
   Future<bool> canvasFileExists(String filePath) async {
     return databaseService.canvasFileExists(filePath);
   }

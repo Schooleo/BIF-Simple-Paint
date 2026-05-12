@@ -30,14 +30,6 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
   @override
   void initState() {
     super.initState();
-    ref.listen<ToolSelectionState>(toolSelectionNotifierProvider, (
-      ToolSelectionState? previous,
-      ToolSelectionState next,
-    ) {
-      if (next.toolType != ToolType.cursor) {
-        _lastNonCursorTool = next.toolType;
-      }
-    });
   }
 
   void _toggleMode() {
@@ -63,6 +55,14 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<ToolSelectionState>(toolSelectionNotifierProvider, (
+      ToolSelectionState? previous,
+      ToolSelectionState next,
+    ) {
+      if (next.toolType != ToolType.cursor) {
+        _lastNonCursorTool = next.toolType;
+      }
+    });
     final AppColors colors = Theme.of(context).extension<AppColors>()!;
     final ToolSelectionState toolSelection = ref.watch(
       toolSelectionNotifierProvider,

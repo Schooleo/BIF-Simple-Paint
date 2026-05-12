@@ -1,16 +1,20 @@
 import 'package:bif_simple_paint/features/canvas_list/models/canvas_metadata.dart';
 import 'package:flutter/material.dart';
 
+enum _CanvasListAction { rename, delete }
+
 class CanvasListItem extends StatelessWidget {
   const CanvasListItem({
     super.key,
     required this.viewData,
     this.onTap,
+    this.onRename,
     this.onDelete,
   });
 
   final CanvasListItemData viewData;
   final VoidCallback? onTap;
+  final VoidCallback? onRename;
   final VoidCallback? onDelete;
 
   @override
@@ -83,13 +87,35 @@ class CanvasListItem extends StatelessWidget {
                   ],
                 ),
               ),
-              if (onDelete != null) ...<Widget>[
+              if (onRename != null || onDelete != null) ...<Widget>[
                 const SizedBox(width: 8),
-                IconButton(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline),
-                  tooltip: 'Delete',
-                  visualDensity: VisualDensity.compact,
+                PopupMenuButton<_CanvasListAction>(
+                  tooltip: 'Canvas actions',
+                  onSelected: (action) {
+                    switch (action) {
+                      case _CanvasListAction.rename:
+                        onRename?.call();
+                        break;
+                      case _CanvasListAction.delete:
+                        onDelete?.call();
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) {
+                    return <PopupMenuEntry<_CanvasListAction>>[
+                      if (onRename != null)
+                        const PopupMenuItem<_CanvasListAction>(
+                          value: _CanvasListAction.rename,
+                          child: Text('Rename'),
+                        ),
+                      if (onDelete != null)
+                        const PopupMenuItem<_CanvasListAction>(
+                          value: _CanvasListAction.delete,
+                          child: Text('Delete'),
+                        ),
+                    ];
+                  },
+                  child: const Icon(Icons.more_vert),
                 ),
               ],
             ],

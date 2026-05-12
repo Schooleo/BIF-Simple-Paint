@@ -77,6 +77,9 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
     final DrawingBoardNotifier drawingBoardNotifier = ref.read(
       drawingBoardNotifierProvider.notifier,
     );
+    final DrawingBoardState drawingState = ref.watch(
+      drawingBoardNotifierProvider,
+    );
     final bool isCursor = toolSelection.toolType == ToolType.cursor;
     final List<Color> strokeColors = <Color>[
       colors.paletteBlue,
@@ -115,6 +118,18 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
         label: 'Export',
         icon: Icons.ios_share,
         onTap: widget.onExport,
+      ),
+    ];
+    final List<_FileAction> historyActions = <_FileAction>[
+      _FileAction(
+        label: 'Undo',
+        icon: Icons.undo,
+        onTap: drawingState.canUndo ? drawingBoardNotifier.undo : null,
+      ),
+      _FileAction(
+        label: 'Redo',
+        icon: Icons.redo,
+        onTap: drawingState.canRedo ? drawingBoardNotifier.redo : null,
       ),
     ];
 
@@ -306,10 +321,14 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
                     int index,
                   ) {
                     final _FileAction action = fileActions[index];
+                    final bool isEnabled = action.onTap != null;
                     final bool isHovered = _hoveredFileIndex == index;
                     final Color background = isHovered
                         ? colors.overlayHover
                         : colors.surfaceSecondary;
+                    final Color iconColor = isEnabled
+                        ? colors.iconPrimary
+                        : colors.iconPrimary.withValues(alpha: 0.4);
 
                     return Padding(
                       padding: const EdgeInsets.only(right: 12),
@@ -342,9 +361,51 @@ class _ToolPaletteState extends ConsumerState<ToolPalette> {
                               child: Center(
                                 child: Icon(
                                   action.icon,
-                                  color: colors.iconPrimary,
+                                  color: iconColor,
                                   size: 20,
                                 ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: List<Widget>.generate(historyActions.length, (
+                    int index,
+                  ) {
+                    final _FileAction action = historyActions[index];
+                    final bool isEnabled = action.onTap != null;
+                    final Color background = colors.surfaceSecondary;
+                    final Color iconColor = isEnabled
+                        ? colors.iconPrimary
+                        : colors.iconPrimary.withValues(alpha: 0.4);
+
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: Tooltip(
+                        message: action.label,
+                        child: AnimatedContainer(
+                          duration: _hoverDuration,
+                          curve: Curves.easeOutCubic,
+                          height: 44,
+                          width: 44,
+                          decoration: BoxDecoration(
+                            color: background,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: colors.borderSubtle),
+                          ),
+                          child: InkWell(
+                            onTap: action.onTap,
+                            borderRadius: BorderRadius.circular(14),
+                            child: Center(
+                              child: Icon(
+                                action.icon,
+                                color: iconColor,
+                                size: 20,
                               ),
                             ),
                           ),

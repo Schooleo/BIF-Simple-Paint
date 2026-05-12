@@ -46,6 +46,37 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
     );
   }
 
+  Future<bool> createNewCanvas({String? title}) async {
+    _autoSaveTimer?.cancel();
+    _transformSnapshot = null;
+    _shapeIdCounter = 0;
+    _revision = 0;
+    _lastSavedRevision = -1;
+    _saveSequence = Future<void>.value();
+
+    final resolvedTitle = (title ?? 'Untitled').trim();
+    state = DrawingBoardState.initial(
+      currentCanvasId: _generateCanvasId(),
+      currentCanvasName: resolvedTitle.isEmpty ? 'Untitled' : resolvedTitle,
+    );
+
+    try {
+      await _persistCurrentCanvas();
+      _lastSavedRevision = _revision;
+      return true;
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'drawing_board_notifier',
+          context: ErrorDescription('while creating a new canvas'),
+        ),
+      );
+      return false;
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.paused) {
@@ -215,6 +246,26 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
       currentFilePath: filePath,
       currentCanvasName: canvasName ?? _canvasNameFor(filePath),
     );
+  }
+
+  void updateCanvasTitle(String title) {
+    final trimmed = title.trim();
+    state = state.copyWith(
+      currentCanvasName: trimmed.isEmpty ? 'Untitled' : trimmed,
+    );
+  }
+
+  Future<bool> isUsingDraftPath() async {
+    final currentPath = state.currentFilePath;
+    if (currentPath == null || currentPath.trim().isEmpty) {
+      return true;
+    }
+
+    final databaseService = ref.read(databaseServiceProvider);
+    final draftPath = await databaseService.resolveDraftFilePath(
+      state.currentCanvasId,
+    );
+    return _normalizePath(currentPath) == _normalizePath(draftPath);
   }
 
   void selectShape(String? id) {
@@ -449,9 +500,12 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
 
     _lastSavedRevision = _revision;
     unawaited(ref.read(canvasListNotifierProvider.notifier).loadCanvases());
+    final resolvedName = state.currentCanvasName.trim().isEmpty
+        ? _canvasNameFor(resolvedPath)
+        : state.currentCanvasName;
     state = state.copyWith(
       currentFilePath: resolvedPath,
-      currentCanvasName: _canvasNameFor(resolvedPath),
+      currentCanvasName: resolvedName,
     );
 
     return resolvedPath;
@@ -478,6 +532,8 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
 
     return rawName.isEmpty ? 'Untitled' : rawName;
   }
+
+  String _normalizePath(String path) => path.replaceAll('\\', '/').trim();
 
   BaseShape? _shapeFromTool({
     required Offset point,
