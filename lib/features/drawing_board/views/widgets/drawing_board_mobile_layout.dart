@@ -300,8 +300,7 @@ class _MobileFloatingToolbarsState
     final double clampedStrokeWidth = strokeWidth
         .clamp(kMinStrokeWidth, maxStrokeWidth)
         .toDouble();
-    final bool showStylePanel =
-        !widget.isSelectionMode && _isStylePanelExpanded;
+    final bool showStylePanel = _isStylePanelExpanded;
 
     return SafeArea(
       top: false,
@@ -499,21 +498,17 @@ class _MobileFloatingToolbarsState
                   const SizedBox(width: 8),
                   _ToolChip(
                     icon: Icon(
-                      _isStylePanelExpanded && !widget.isSelectionMode
+                      _isStylePanelExpanded
                           ? Icons.palette
                           : Icons.palette_outlined,
-                      color: _isStylePanelExpanded && !widget.isSelectionMode
+                      color: _isStylePanelExpanded
                           ? colors.backgroundPrimary
                           : colors.iconPrimary,
                       size: 20,
                     ),
-                    isSelected:
-                        _isStylePanelExpanded && !widget.isSelectionMode,
+                    isSelected: _isStylePanelExpanded,
                     colors: colors,
                     onTap: () {
-                      if (widget.isSelectionMode) {
-                        return;
-                      }
                       setState(() {
                         _isStylePanelExpanded = !_isStylePanelExpanded;
                       });

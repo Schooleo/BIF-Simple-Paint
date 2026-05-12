@@ -18,6 +18,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
 
+bool shouldResetDesktopBoardAfterDelete({
+  required double screenWidth,
+  required String activeCanvasId,
+  required String deletedCanvasId,
+}) {
+  return screenWidth >= 800 && activeCanvasId == deletedCanvasId;
+}
+
 class CanvasListScreen extends ConsumerStatefulWidget {
   const CanvasListScreen({super.key});
 
@@ -633,6 +641,9 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
     BuildContext context,
     CanvasMetadata metadata,
   ) async {
+    final activeCanvasId = ref
+        .read(drawingBoardNotifierProvider)
+        .currentCanvasId;
     final success = await ref
         .read(canvasListNotifierProvider.notifier)
         .deleteCanvas(metadata.id);
@@ -643,6 +654,27 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
     if (!success) {
       _showToast(context, 'Unable to remove ${metadata.name}.');
       return;
+    }
+
+    if (shouldResetDesktopBoardAfterDelete(
+      screenWidth: MediaQuery.sizeOf(context).width,
+      activeCanvasId: activeCanvasId,
+      deletedCanvasId: metadata.id,
+    )) {
+      final resetSuccess = await ref
+          .read(drawingBoardNotifierProvider.notifier)
+          .createNewCanvas();
+      if (!context.mounted) {
+        return;
+      }
+
+      if (!resetSuccess) {
+        _showToast(
+          context,
+          'Removed ${metadata.name}, but could not reset the board.',
+        );
+        return;
+      }
     }
 
     _showToast(context, '${metadata.name} removed from recent projects.');
