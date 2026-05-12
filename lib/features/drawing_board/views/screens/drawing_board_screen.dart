@@ -321,37 +321,10 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
     BuildContext context,
     String currentTitle,
   ) async {
-    final controller = TextEditingController(text: currentTitle);
-    final result = await showDialog<String>(
+    return showDialog<String>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Canvas Title'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(
-              hintText: 'Enter a title for this canvas',
-            ),
-            onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () =>
-                  Navigator.of(dialogContext).pop(controller.text),
-              child: const Text('Continue'),
-            ),
-          ],
-        );
-      },
+      builder: (dialogContext) => _CanvasTitleDialog(initialTitle: currentTitle),
     );
-    controller.dispose();
-    return result;
   }
 
   String _fileNameFromPath(String path) {
@@ -380,3 +353,55 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
     }
   }
 }
+
+class _CanvasTitleDialog extends StatefulWidget {
+  const _CanvasTitleDialog({required this.initialTitle});
+
+  final String initialTitle;
+
+  @override
+  State<_CanvasTitleDialog> createState() => _CanvasTitleDialogState();
+}
+
+class _CanvasTitleDialogState extends State<_CanvasTitleDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialTitle);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Canvas Title'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(
+          hintText: 'Enter a title for this canvas',
+        ),
+        onSubmitted: (value) => Navigator.of(context).pop(value),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Continue'),
+        ),
+      ],
+    );
+  }
+}
+
