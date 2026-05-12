@@ -19,7 +19,7 @@ const double _serializedCanvasHeight = 4096;
 
 enum CanvasLoadFailure { unsupportedVersion, corruptedFile }
 
-@riverpod
+@Riverpod(keepAlive: true)
 class DrawingBoardNotifier extends _$DrawingBoardNotifier
     with WidgetsBindingObserver {
   int _shapeIdCounter = 0;
@@ -58,6 +58,7 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
     state = DrawingBoardState.initial(
       currentCanvasId: _generateCanvasId(),
       currentCanvasName: resolvedTitle.isEmpty ? 'Untitled' : resolvedTitle,
+      shouldFocusCanvasTitle: true,
     );
 
     try {
@@ -217,6 +218,7 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
       state = DrawingBoardState.initial(
         currentCanvasId: nextCanvasId,
         currentCanvasName: 'Untitled',
+        shouldFocusCanvasTitle: false,
       ).copyWith(finalizedShapes: _cloneSnapshot(shapes));
       _markDirty();
       return null;
@@ -245,14 +247,41 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
       currentCanvasId: canvasId,
       currentFilePath: filePath,
       currentCanvasName: canvasName ?? _canvasNameFor(filePath),
+      shouldFocusCanvasTitle: false,
     );
   }
 
   void updateCanvasTitle(String title) {
     final trimmed = title.trim();
+    final resolvedTitle = trimmed.isEmpty ? 'Untitled' : trimmed;
+    final hasChanged =
+        resolvedTitle != state.currentCanvasName ||
+        state.shouldFocusCanvasTitle;
+    if (!hasChanged) {
+      return;
+    }
+
     state = state.copyWith(
-      currentCanvasName: trimmed.isEmpty ? 'Untitled' : trimmed,
+      currentCanvasName: resolvedTitle,
+      shouldFocusCanvasTitle: false,
     );
+    _markDirty();
+  }
+
+  void consumeCanvasTitleFocusRequest() {
+    if (!state.shouldFocusCanvasTitle) {
+      return;
+    }
+
+    state = state.copyWith(shouldFocusCanvasTitle: false);
+  }
+
+  Future<void> flushPendingChanges({bool writeSynchronously = false}) {
+    if (writeSynchronously) {
+      _autoSaveTimer?.cancel();
+    }
+
+    return _flushAutoSave(writeSynchronously: writeSynchronously);
   }
 
   Future<bool> isUsingDraftPath() async {
@@ -546,13 +575,13 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
         point,
         id: id,
         strokeColor: toolSelection.currentStrokeColor,
-        strokeWidth: toolSelection.currentStrokeWidth,
+        strokeWidth: strokeWidthForTool(toolSelection, ToolType.brush),
       ),
       ToolType.eraser => EraserShape.seed(
         point,
         id: id,
         strokeColor: toolSelection.currentStrokeColor,
-        strokeWidth: toolSelection.currentStrokeWidth,
+        strokeWidth: strokeWidthForTool(toolSelection, ToolType.eraser),
       ),
       ToolType.shape => _shapeFromBounds(toolSelection, point, point, id),
       ToolType.cursor => null,
@@ -693,6 +722,7 @@ class DrawingBoardState {
     required this.currentCanvasId,
     required this.currentCanvasName,
     required this.currentFilePath,
+    required this.shouldFocusCanvasTitle,
   }) : finalizedShapes = List<BaseShape>.unmodifiable(finalizedShapes),
        undoStack = List<List<BaseShape>>.unmodifiable(
          undoStack
@@ -709,6 +739,7 @@ class DrawingBoardState {
     String currentCanvasId = 'canvas_initial',
     String currentCanvasName = 'Untitled',
     String? currentFilePath,
+    bool shouldFocusCanvasTitle = false,
   }) {
     return DrawingBoardState._(
       finalizedShapes: const <BaseShape>[],
@@ -719,6 +750,7 @@ class DrawingBoardState {
       currentCanvasId: currentCanvasId,
       currentCanvasName: currentCanvasName,
       currentFilePath: currentFilePath,
+      shouldFocusCanvasTitle: shouldFocusCanvasTitle,
     );
   }
 
@@ -730,6 +762,7 @@ class DrawingBoardState {
   final String currentCanvasId;
   final String currentCanvasName;
   final String? currentFilePath;
+  final bool shouldFocusCanvasTitle;
 
   bool get canUndo => undoStack.isNotEmpty;
 
@@ -763,6 +796,7 @@ class DrawingBoardState {
     String? currentCanvasId,
     String? currentCanvasName,
     Object? currentFilePath = _stateSentinel,
+    bool? shouldFocusCanvasTitle,
   }) {
     return DrawingBoardState._(
       finalizedShapes: finalizedShapes ?? this.finalizedShapes,
@@ -779,6 +813,8 @@ class DrawingBoardState {
       currentFilePath: identical(currentFilePath, _stateSentinel)
           ? this.currentFilePath
           : currentFilePath as String?,
+      shouldFocusCanvasTitle:
+          shouldFocusCanvasTitle ?? this.shouldFocusCanvasTitle,
     );
   }
 }

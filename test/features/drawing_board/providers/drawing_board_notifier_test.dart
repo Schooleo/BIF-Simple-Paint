@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:bif_simple_paint/core/utils/binary_serializer.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
@@ -121,6 +122,36 @@ void main() {
       expect(state.undoStack, isEmpty);
       expect(state.redoStack, isEmpty);
     });
+
+    test(
+      'loaded canvas state survives listener gaps so opening a saved canvas does not reset to Untitled',
+      () async {
+        final bytes = await encodeShapes(
+          <BaseShape>[
+            const RectangleShape(start: Offset(20, 20), end: Offset(140, 120)),
+          ],
+          4096,
+          4096,
+        );
+
+        final failure = await notifier.loadFromBytes(bytes);
+        expect(failure, isNull);
+
+        notifier.setCurrentFilePath(
+          '/tmp/saved_canvas.mypt',
+          canvasId: 'canvas_saved',
+          canvasName: 'Saved Canvas',
+        );
+
+        await container.pump();
+
+        final state = container.read(drawingBoardNotifierProvider);
+        expect(state.currentCanvasId, 'canvas_saved');
+        expect(state.currentCanvasName, 'Saved Canvas');
+        expect(state.currentFilePath, '/tmp/saved_canvas.mypt');
+        expect(state.finalizedShapes, hasLength(1));
+      },
+    );
 
     test('updateDrawing is a no-op before startDrawing', () {
       final before = container.read(drawingBoardNotifierProvider);

@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
@@ -10,11 +8,13 @@ import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_bo
 import 'package:bif_simple_paint/features/drawing_board/views/screens/drawing_board_screen.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
-class MockDrawingBoardNotifier extends AutoDisposeNotifier<DrawingBoardState>
+class MockDrawingBoardNotifier extends Notifier<DrawingBoardState>
     with Mock
     implements DrawingBoardNotifier {
   @override
@@ -28,6 +28,14 @@ Widget wrapWithMaterialApp(Widget child) {
     ),
     home: Scaffold(body: child),
   );
+}
+
+Rect boundsForShape(BaseShape shape) {
+  return switch (shape) {
+    PathShape() => Rect.fromPoints(shape.points.first, shape.points.last),
+    TwoPointShape() => Rect.fromPoints(shape.startPoint, shape.endPoint),
+    _ => Rect.zero,
+  };
 }
 
 void main() {
@@ -124,6 +132,140 @@ void main() {
         .selectedShapeId;
     expect(selectedId, topId);
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('pinchGesture_scalesSelectedObject_whenCursorToolIsActive', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(drawingBoardNotifierProvider.notifier);
+    notifier.startDrawing(
+      const Offset(40, 40),
+      const ToolSelectionState(toolType: ToolType.shape),
+    );
+    notifier.updateDrawing(const Offset(120, 120));
+    notifier.commitDrawing();
+    final shapeId = container
+        .read(drawingBoardNotifierProvider)
+        .finalizedShapes
+        .single
+        .id;
+    notifier.selectShape(shapeId);
+    container
+        .read(toolSelectionNotifierProvider.notifier)
+        .selectTool(ToolType.cursor);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithMaterialApp(
+          const SizedBox(width: 240, height: 240, child: InteractiveCanvas()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final before = boundsForShape(
+      container.read(drawingBoardNotifierProvider).selectedShape!,
+    );
+    final canvasTopLeft = tester.getTopLeft(find.byType(InteractiveCanvas));
+
+    final gestureA = await tester.startGesture(
+      canvasTopLeft + const Offset(60, 60),
+      pointer: 1,
+    );
+    final gestureB = await tester.startGesture(
+      canvasTopLeft + const Offset(100, 100),
+      pointer: 2,
+    );
+    await tester.pump();
+
+    await gestureA.moveTo(canvasTopLeft + const Offset(40, 40));
+    await gestureB.moveTo(canvasTopLeft + const Offset(120, 120));
+    await tester.pump();
+
+    await gestureA.up();
+    await gestureB.up();
+    await tester.pumpAndSettle();
+
+    final after = boundsForShape(
+      container.read(drawingBoardNotifierProvider).selectedShape!,
+    );
+
+    expect(after.width, greaterThan(before.width));
+    expect(after.height, greaterThan(before.height));
+  });
+
+  testWidgets('twoFingerPinch_updatesViewportTransform_forBoardZoom', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithMaterialApp(
+          const SizedBox(width: 240, height: 240, child: InteractiveCanvas()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final canvasTopLeft = tester.getTopLeft(find.byType(InteractiveCanvas));
+    final gestureA = await tester.startGesture(
+      canvasTopLeft + const Offset(80, 80),
+      pointer: 1,
+    );
+    final gestureB = await tester.startGesture(
+      canvasTopLeft + const Offset(140, 140),
+      pointer: 2,
+    );
+    await tester.pump();
+
+    await gestureA.moveTo(canvasTopLeft + const Offset(60, 60));
+    await gestureB.moveTo(canvasTopLeft + const Offset(160, 160));
+    await tester.pump();
+
+    final transform = tester.widget<Transform>(
+      find.byKey(const ValueKey<String>('interactive-canvas-transform')),
+    );
+
+    await gestureA.up();
+    await gestureB.up();
+
+    expect(transform.transform.getMaxScaleOnAxis(), greaterThan(1.0));
+  });
+
+  testWidgets('mouseWheelScroll_updatesViewportTransform_forDesktopZoom', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithMaterialApp(
+          const SizedBox(width: 240, height: 240, child: InteractiveCanvas()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final center = tester.getCenter(find.byType(InteractiveCanvas));
+    final mouse = TestPointer(10, PointerDeviceKind.mouse);
+    await tester.sendEventToBinding(mouse.hover(center));
+    await tester.sendEventToBinding(mouse.scroll(const Offset(0, -120)));
+    await tester.pump();
+
+    final transform = tester.widget<Transform>(
+      find.byKey(const ValueKey<String>('interactive-canvas-transform')),
+    );
+
+    expect(transform.transform.getMaxScaleOnAxis(), greaterThan(1.0));
   });
 
   // --------------------------------------------------------------------------
@@ -261,6 +403,128 @@ void main() {
     await tester.pumpAndSettle();
 
     verifyNever(() => mockNotifier.loadFromBytes(any()));
+  });
+
+  testWidgets('desktop shortcut bindings map undo and redo actions', (
+    tester,
+  ) async {
+    final mockNotifier = MockDrawingBoardNotifier();
+    when(() => mockNotifier.undo()).thenReturn(null);
+    when(() => mockNotifier.redo()).thenReturn(null);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          drawingBoardNotifierProvider.overrideWith(() => mockNotifier),
+        ],
+        child: wrapWithMaterialApp(const CanvasArea()),
+      ),
+    );
+    await tester.pump();
+
+    final shortcuts = tester.widget<CallbackShortcuts>(
+      find.byType(CallbackShortcuts),
+    );
+
+    shortcuts
+        .bindings[const SingleActivator(LogicalKeyboardKey.keyZ, control: true)]
+        ?.call();
+    shortcuts
+        .bindings[const SingleActivator(LogicalKeyboardKey.keyY, control: true)]
+        ?.call();
+    shortcuts
+        .bindings[const SingleActivator(
+          LogicalKeyboardKey.keyZ,
+          control: true,
+          shift: true,
+        )]
+        ?.call();
+
+    verify(() => mockNotifier.undo()).called(1);
+    verify(() => mockNotifier.redo()).called(2);
+  });
+
+  testWidgets('desktop shortcuts are ignored while editing canvas title', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    container
+        .read(toolSelectionNotifierProvider.notifier)
+        .selectTool(ToolType.eraser);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithMaterialApp(const CanvasArea()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byType(TextField).first);
+    await tester.pump();
+
+    final shortcuts = tester.widget<CallbackShortcuts>(
+      find.byType(CallbackShortcuts),
+    );
+
+    shortcuts.bindings[const SingleActivator(LogicalKeyboardKey.keyQ)]?.call();
+    shortcuts.bindings[const SingleActivator(LogicalKeyboardKey.keyW)]?.call();
+    shortcuts.bindings[const SingleActivator(LogicalKeyboardKey.keyE)]?.call();
+    shortcuts.bindings[const SingleActivator(LogicalKeyboardKey.keyR)]?.call();
+
+    final selection = container.read(toolSelectionNotifierProvider);
+    expect(selection.toolType, ToolType.eraser);
+    expect(find.byIcon(Icons.expand_more), findsNothing);
+  });
+
+  testWidgets('desktop mode shortcuts switch tools and pick shapes', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithMaterialApp(const CanvasArea()),
+      ),
+    );
+    await tester.pump();
+
+    final shortcuts = tester.widget<CallbackShortcuts>(
+      find.byType(CallbackShortcuts),
+    );
+
+    shortcuts.bindings[const SingleActivator(LogicalKeyboardKey.keyQ)]?.call();
+    expect(
+      container.read(toolSelectionNotifierProvider).toolType,
+      ToolType.cursor,
+    );
+
+    shortcuts.bindings[const SingleActivator(LogicalKeyboardKey.keyW)]?.call();
+    expect(
+      container.read(toolSelectionNotifierProvider).toolType,
+      ToolType.brush,
+    );
+
+    shortcuts.bindings[const SingleActivator(LogicalKeyboardKey.keyE)]?.call();
+    expect(
+      container.read(toolSelectionNotifierProvider).toolType,
+      ToolType.eraser,
+    );
+
+    shortcuts.bindings[const SingleActivator(LogicalKeyboardKey.keyR)]?.call();
+    await tester.pump();
+    shortcuts.bindings[const SingleActivator(LogicalKeyboardKey.arrowRight)]
+        ?.call();
+    shortcuts.bindings[const SingleActivator(LogicalKeyboardKey.enter)]?.call();
+    await tester.pump();
+
+    final selection = container.read(toolSelectionNotifierProvider);
+    expect(selection.toolType, ToolType.shape);
+    expect(selection.shapeType, ShapeType.oval);
   });
 
   // --------------------------------------------------------------------------
