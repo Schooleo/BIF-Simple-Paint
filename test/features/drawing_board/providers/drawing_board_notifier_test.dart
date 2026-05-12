@@ -328,6 +328,144 @@ void main() {
       );
     });
 
+    test('deleteSelectedShape_removesShape_andPushesUndoHistory', () {
+      notifier.startDrawing(const Offset(1, 1), selection());
+      notifier.commitDrawing();
+      final shapeId = container
+          .read(drawingBoardNotifierProvider)
+          .finalizedShapes
+          .single
+          .id;
+      notifier.selectShape(shapeId);
+      final undoLengthBefore =
+          container.read(drawingBoardNotifierProvider).undoStack.length;
+
+      notifier.deleteSelectedShape();
+
+      final state = container.read(drawingBoardNotifierProvider);
+      expect(state.finalizedShapes, isEmpty);
+      expect(state.selectedShapeId, isNull);
+      expect(state.undoStack.length, undoLengthBefore + 1);
+      expect(state.redoStack, isEmpty);
+    });
+
+    test('deleteSelectedShape_isNoOp_whenNothingSelected', () {
+      notifier.startDrawing(const Offset(1, 1), selection());
+      notifier.commitDrawing();
+      notifier.selectShape(null);
+      final before = container.read(drawingBoardNotifierProvider);
+
+      notifier.deleteSelectedShape();
+
+      final after = container.read(drawingBoardNotifierProvider);
+      expect(after.finalizedShapes.length, before.finalizedShapes.length);
+      expect(after.undoStack.length, before.undoStack.length);
+    });
+
+    test(
+      'deleteSelectedShape_canBeUndone_restoringShape',
+      () {
+        notifier.startDrawing(const Offset(1, 1), selection());
+        notifier.commitDrawing();
+        final shapeId = container
+            .read(drawingBoardNotifierProvider)
+            .finalizedShapes
+            .single
+            .id;
+        notifier.selectShape(shapeId);
+
+        notifier.deleteSelectedShape();
+        expect(
+          container.read(drawingBoardNotifierProvider).finalizedShapes,
+          isEmpty,
+        );
+
+        notifier.undo();
+
+        final state = container.read(drawingBoardNotifierProvider);
+        expect(state.finalizedShapes, hasLength(1));
+        expect(state.finalizedShapes.single.id, shapeId);
+      },
+    );
+
+    test(
+      'duplicateSelectedShape_createsOffsetCopy_withNewId',
+      () {
+        notifier.startDrawing(
+          const Offset(10, 10),
+          selection(toolType: ToolType.shape, shapeType: ShapeType.rectangle),
+        );
+        notifier.updateDrawing(const Offset(50, 50));
+        notifier.commitDrawing();
+        final original = container
+            .read(drawingBoardNotifierProvider)
+            .finalizedShapes
+            .single as RectangleShape;
+        notifier.selectShape(original.id);
+
+        notifier.duplicateSelectedShape();
+
+        final state = container.read(drawingBoardNotifierProvider);
+        expect(state.finalizedShapes, hasLength(2));
+
+        final duplicate = state.finalizedShapes.last as RectangleShape;
+        expect(duplicate.id, isNot(equals(original.id)));
+        // Duplicate should be offset by 16,16
+        expect(duplicate.startPoint, original.startPoint + const Offset(16, 16));
+        expect(duplicate.endPoint, original.endPoint + const Offset(16, 16));
+        // Duplicate is auto-selected
+        expect(state.selectedShapeId, duplicate.id);
+        // Undo history is pushed
+        expect(state.undoStack.isNotEmpty, isTrue);
+      },
+    );
+
+    test('duplicateSelectedShape_isNoOp_whenNothingSelected', () {
+      notifier.startDrawing(const Offset(1, 1), selection());
+      notifier.commitDrawing();
+      notifier.selectShape(null);
+      final before = container.read(drawingBoardNotifierProvider);
+
+      notifier.duplicateSelectedShape();
+
+      final after = container.read(drawingBoardNotifierProvider);
+      expect(after.finalizedShapes.length, before.finalizedShapes.length);
+    });
+
+    test('withId_returnsShapeWithNewId_forBrushShape', () {
+      notifier.startDrawing(const Offset(5, 5), selection());
+      notifier.commitDrawing();
+      final original = container
+          .read(drawingBoardNotifierProvider)
+          .finalizedShapes
+          .single;
+
+      final renamed = original.withId('new-id');
+
+      expect(renamed.id, 'new-id');
+      expect(renamed.runtimeType, original.runtimeType);
+      expect(renamed.strokeColor, original.strokeColor);
+    });
+
+    test('withId_returnsShapeWithNewId_forRectangleShape', () {
+      notifier.startDrawing(
+        const Offset(0, 0),
+        selection(toolType: ToolType.shape, shapeType: ShapeType.rectangle),
+      );
+      notifier.updateDrawing(const Offset(40, 40));
+      notifier.commitDrawing();
+      final original = container
+          .read(drawingBoardNotifierProvider)
+          .finalizedShapes
+          .single as RectangleShape;
+
+      final renamed = original.withId('rect-new') as RectangleShape;
+
+      expect(renamed.id, 'rect-new');
+      expect(renamed.startPoint, original.startPoint);
+      expect(renamed.endPoint, original.endPoint);
+    });
+
     test('provider implementation stays isolated from repository concerns', () {
       final notifierSource = File(
         'lib/features/drawing_board/providers/drawing_board_notifier.dart',
@@ -338,9 +476,12 @@ void main() {
 
       expect(shapeSource, contains('BaseShape copyStyle'));
       expect(shapeSource, contains('BaseShape clone'));
+      expect(shapeSource, contains('BaseShape withId'));
       expect(notifierSource, contains('void undo()'));
       expect(notifierSource, contains('void redo()'));
       expect(notifierSource, contains('void selectShape(String? id)'));
+      expect(notifierSource, contains('void deleteSelectedShape()'));
+      expect(notifierSource, contains('void duplicateSelectedShape()'));
       expect(notifierSource, contains('void updateSelectedShapeStyle'));
 
       for (final source in <String>[notifierSource, shapeSource]) {

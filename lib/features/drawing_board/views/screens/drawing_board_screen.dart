@@ -95,7 +95,13 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
         },
         child: Stack(
           children: <Widget>[
-            Positioned.fill(child: InteractiveCanvas(key: _canvasExportKey)),
+            Positioned.fill(
+              child: InteractiveCanvas(
+                key: _canvasExportKey,
+                onSave: () => _saveCanvas(context),
+                onLoad: () => _loadCanvas(context),
+              ),
+            ),
             Align(
               alignment: Alignment.topCenter,
               child: Padding(

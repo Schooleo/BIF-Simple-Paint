@@ -135,6 +135,18 @@ abstract base class TwoPointShape extends BaseShape {
   }
 
   @override
+  TwoPointShape withId(String newId) {
+    return createWith(
+      startPoint: startPoint,
+      endPoint: endPoint,
+      id: newId,
+      fillColor: fillColor,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
+  }
+
+  @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         other.runtimeType == runtimeType &&

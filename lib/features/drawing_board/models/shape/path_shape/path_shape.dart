@@ -128,6 +128,17 @@ abstract base class PathShape extends BaseShape {
   }
 
   @override
+  PathShape withId(String newId) {
+    return createWith(
+      points: List<Offset>.of(_points),
+      isFinalized: isFinalized,
+      id: newId,
+      strokeColor: strokeColor,
+      strokeWidth: strokeWidth,
+    );
+  }
+
+  @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other.runtimeType != runtimeType || other is! PathShape) return false;

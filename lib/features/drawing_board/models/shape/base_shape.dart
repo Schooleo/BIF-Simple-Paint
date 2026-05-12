@@ -33,6 +33,9 @@ abstract base class BaseShape {
     Color? strokeColor,
     double? strokeWidth,
   });
+
+  /// Returns a copy of this shape with [newId] as the identifier.
+  BaseShape withId(String newId);
 }
 
 enum ResizeCorner { topLeft, topRight, bottomLeft, bottomRight }

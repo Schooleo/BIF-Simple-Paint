@@ -612,7 +612,7 @@ class _ColorRow extends StatelessWidget {
                           child: Container(
                             height: 2,
                             width: 20,
-                            color: colors.error,
+                            color: colors.transparent,
                             transform: Matrix4.rotationZ(-0.6),
                           ),
                         )

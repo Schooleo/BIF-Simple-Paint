@@ -33,6 +33,7 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.success,
     required this.warning,
     required this.error,
+    required this.transparent,
   });
 
   static const Color drawingFillTransparent = Color(0x00000000);
@@ -69,6 +70,7 @@ class AppColors extends ThemeExtension<AppColors> {
     success: Color(0xFF10B981),
     warning: Color(0xFFF59E0B),
     error: Color(0xFFEF4444),
+    transparent: Color(0x00000000),
   );
 
   static const AppColors dark = AppColors(
@@ -102,6 +104,7 @@ class AppColors extends ThemeExtension<AppColors> {
     success: Color(0xFF10B981),
     warning: Color(0xFFF59E0B),
     error: Color(0xFFEF4444),
+    transparent: Color(0x00000000),
   );
 
   final Color backgroundPrimary;
@@ -134,6 +137,7 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color success;
   final Color warning;
   final Color error;
+  final Color transparent;
 
   @override
   AppColors copyWith({
@@ -167,6 +171,7 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? success,
     Color? warning,
     Color? error,
+    Color? transparent,
   }) {
     return AppColors(
       backgroundPrimary: backgroundPrimary ?? this.backgroundPrimary,
@@ -199,6 +204,7 @@ class AppColors extends ThemeExtension<AppColors> {
       success: success ?? this.success,
       warning: warning ?? this.warning,
       error: error ?? this.error,
+      transparent: transparent ?? this.transparent,
     );
   }
 
@@ -263,6 +269,7 @@ class AppColors extends ThemeExtension<AppColors> {
       success: Color.lerp(success, other.success, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
       error: Color.lerp(error, other.error, t)!,
+      transparent: Color.lerp(transparent, other.transparent, t)!,
     );
   }
 }

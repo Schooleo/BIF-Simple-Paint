@@ -277,6 +277,46 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
     state = state.copyWith(selectedShapeId: state.hasShape(id) ? id : null);
   }
 
+  void deleteSelectedShape() {
+    final selectedShapeId = state.selectedShapeId;
+    if (selectedShapeId == null) {
+      return;
+    }
+
+    final updatedShapes = state.finalizedShapes
+        .where((shape) => shape.id != selectedShapeId)
+        .toList(growable: false);
+
+    _commitState(
+      finalizedShapes: updatedShapes,
+      activeTempShape: null,
+      selectedShapeId: null,
+    );
+  }
+
+  void duplicateSelectedShape() {
+    final selectedShape = state.selectedShape;
+    if (selectedShape == null) {
+      return;
+    }
+
+    const offset = Offset(16, 16);
+    final duplicated = selectedShape.translate(offset).clone();
+    final id = _nextShapeId();
+    // Create a new shape with a fresh id by cloning and overriding via translate
+    // We need a new ID, so we build a fresh shape from the translated one
+    final newShape = _rebrandShape(duplicated, id);
+
+    _commitState(
+      finalizedShapes: <BaseShape>[...state.finalizedShapes, newShape],
+      activeTempShape: null,
+      selectedShapeId: newShape.id,
+    );
+  }
+
+  /// Returns a copy of [shape] with a new [id].
+  BaseShape _rebrandShape(BaseShape shape, String id) => shape.withId(id);
+
   void beginTransform() {
     _transformSnapshot ??= _cloneSnapshot(state.finalizedShapes);
   }

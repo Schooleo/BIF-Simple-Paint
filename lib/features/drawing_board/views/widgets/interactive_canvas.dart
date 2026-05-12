@@ -20,7 +20,17 @@ const double _kDashGap = 4.0;
 const Color _kSelectionColor = Color(0xFF2196F3);
 
 class InteractiveCanvas extends ConsumerStatefulWidget {
-  const InteractiveCanvas({super.key});
+  const InteractiveCanvas({
+    super.key,
+    this.onSave,
+    this.onLoad,
+  });
+
+  /// Called when the user triggers Ctrl+S.
+  final VoidCallback? onSave;
+
+  /// Called when the user triggers Ctrl+O.
+  final VoidCallback? onLoad;
 
   @override
   ConsumerState<InteractiveCanvas> createState() => _InteractiveCanvasState();
@@ -129,31 +139,93 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    // ── Shift tracking (for aspect-ratio lock during resize) ────────────────
     final bool isShift = event.logicalKey == LogicalKeyboardKey.shiftLeft ||
         event.logicalKey == LogicalKeyboardKey.shiftRight;
-    if (!isShift) {
+    if (isShift) {
+      final bool pressed = event is KeyDownEvent || event is KeyRepeatEvent;
+      if (_isShiftPressed != pressed) {
+        setState(() {
+          _isShiftPressed = pressed;
+        });
+        if (!pressed) {
+          _resizeLockAxis = null;
+        } else if (_dragMode == _DragMode.resize &&
+            _resizeFixedCorner != null &&
+            _resizeRawMovingCorner != null) {
+          _resizeLockAxis = _pickResizeAxis(
+            _resizeFixedCorner!,
+            _resizeRawMovingCorner!,
+          );
+        }
+      }
+      return KeyEventResult.handled;
+    }
+
+    // Only act on key-down (or repeat for held keys)
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
 
-    final bool pressed = event is KeyDownEvent || event is KeyRepeatEvent;
-    if (_isShiftPressed != pressed) {
-      setState(() {
-        _isShiftPressed = pressed;
-      });
+    final bool isCtrl = HardwareKeyboard.instance.isControlPressed;
+    final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
+    final drawingState = ref.read(drawingBoardNotifierProvider);
 
-      if (!pressed) {
-        _resizeLockAxis = null;
-      } else if (_dragMode == _DragMode.resize &&
-          _resizeFixedCorner != null &&
-          _resizeRawMovingCorner != null) {
-        _resizeLockAxis = _pickResizeAxis(
-          _resizeFixedCorner!,
-          _resizeRawMovingCorner!,
-        );
+    // ── Ctrl combos ─────────────────────────────────────────────────────────
+    if (isCtrl) {
+      switch (event.logicalKey) {
+        case LogicalKeyboardKey.keyZ:
+          drawingNotifier.undo();
+          return KeyEventResult.handled;
+
+        case LogicalKeyboardKey.keyY:
+          drawingNotifier.redo();
+          return KeyEventResult.handled;
+
+        case LogicalKeyboardKey.keyD:
+          drawingNotifier.duplicateSelectedShape();
+          return KeyEventResult.handled;
+
+        case LogicalKeyboardKey.keyS:
+          widget.onSave?.call();
+          return KeyEventResult.handled;
+
+        case LogicalKeyboardKey.keyO:
+          widget.onLoad?.call();
+          return KeyEventResult.handled;
+
+        case LogicalKeyboardKey.keyA:
+          // Switch to cursor (select) tool
+          ref
+              .read(toolSelectionNotifierProvider.notifier)
+              .selectTool(ToolType.cursor);
+          return KeyEventResult.handled;
+
+        default:
+          return KeyEventResult.ignored;
       }
     }
 
-    return KeyEventResult.handled;
+    // ── Non-Ctrl keybinds ───────────────────────────────────────────────────
+    switch (event.logicalKey) {
+      case LogicalKeyboardKey.delete:
+      case LogicalKeyboardKey.backspace:
+        if (drawingState.selectedShapeId != null) {
+          drawingNotifier.deleteSelectedShape();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+
+      case LogicalKeyboardKey.escape:
+        if (drawingState.selectedShapeId != null) {
+          drawingNotifier.selectShape(null);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+
+      default:
+        return KeyEventResult.ignored;
+    }
   }
 
   void _handleTapDown(TapDownDetails details) {

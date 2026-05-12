@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
@@ -10,6 +8,7 @@ import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_bo
 import 'package:bif_simple_paint/features/drawing_board/views/screens/drawing_board_screen.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -281,4 +280,364 @@ void main() {
     );
     expect(customPaintFinder, findsWidgets);
   });
+
+  // --------------------------------------------------------------------------
+  // Skill 6: Keyboard Shortcut Tests
+  // --------------------------------------------------------------------------
+
+  testWidgets('keyboardShortcut_ctrlZ_triggersUndo', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(drawingBoardNotifierProvider.notifier);
+    // Draw a shape so there's something to undo
+    notifier.startDrawing(
+      const Offset(10, 10),
+      const ToolSelectionState(toolType: ToolType.brush),
+    );
+    notifier.updateDrawing(const Offset(80, 80));
+    notifier.commitDrawing();
+    expect(
+      container.read(drawingBoardNotifierProvider).finalizedShapes,
+      hasLength(1),
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithMaterialApp(const InteractiveCanvas()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(
+      container.read(drawingBoardNotifierProvider).finalizedShapes,
+      isEmpty,
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('keyboardShortcut_ctrlY_triggersRedo', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(drawingBoardNotifierProvider.notifier);
+    notifier.startDrawing(
+      const Offset(10, 10),
+      const ToolSelectionState(toolType: ToolType.brush),
+    );
+    notifier.updateDrawing(const Offset(80, 80));
+    notifier.commitDrawing();
+    notifier.undo();
+    expect(
+      container.read(drawingBoardNotifierProvider).canRedo,
+      isTrue,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithMaterialApp(const InteractiveCanvas()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyY);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyY);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(
+      container.read(drawingBoardNotifierProvider).finalizedShapes,
+      hasLength(1),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('keyboardShortcut_deleteKey_deletesSelectedShape', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(drawingBoardNotifierProvider.notifier);
+    notifier.startDrawing(
+      const Offset(10, 10),
+      const ToolSelectionState(toolType: ToolType.brush),
+    );
+    notifier.updateDrawing(const Offset(80, 80));
+    notifier.commitDrawing();
+    final shapeId = container
+        .read(drawingBoardNotifierProvider)
+        .finalizedShapes
+        .single
+        .id;
+    notifier.selectShape(shapeId);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithMaterialApp(const InteractiveCanvas()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.delete);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.delete);
+    await tester.pump();
+
+    expect(
+      container.read(drawingBoardNotifierProvider).finalizedShapes,
+      isEmpty,
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+    'keyboardShortcut_backspaceKey_deletesSelectedShape',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(drawingBoardNotifierProvider.notifier);
+      notifier.startDrawing(
+        const Offset(10, 10),
+        const ToolSelectionState(toolType: ToolType.brush),
+      );
+      notifier.updateDrawing(const Offset(80, 80));
+      notifier.commitDrawing();
+      final shapeId = container
+          .read(drawingBoardNotifierProvider)
+          .finalizedShapes
+          .single
+          .id;
+      notifier.selectShape(shapeId);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: wrapWithMaterialApp(const InteractiveCanvas()),
+        ),
+      );
+      await tester.pump();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.backspace);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.backspace);
+      await tester.pump();
+
+      expect(
+        container.read(drawingBoardNotifierProvider).finalizedShapes,
+        isEmpty,
+      );
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('keyboardShortcut_escape_clearsSelection', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(drawingBoardNotifierProvider.notifier);
+    notifier.startDrawing(
+      const Offset(10, 10),
+      const ToolSelectionState(toolType: ToolType.brush),
+    );
+    notifier.updateDrawing(const Offset(80, 80));
+    notifier.commitDrawing();
+    final shapeId = container
+        .read(drawingBoardNotifierProvider)
+        .finalizedShapes
+        .single
+        .id;
+    notifier.selectShape(shapeId);
+    expect(
+      container.read(drawingBoardNotifierProvider).selectedShapeId,
+      shapeId,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithMaterialApp(const InteractiveCanvas()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.escape);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+
+    expect(
+      container.read(drawingBoardNotifierProvider).selectedShapeId,
+      isNull,
+    );
+    // Shape must still be on the canvas
+    expect(
+      container.read(drawingBoardNotifierProvider).finalizedShapes,
+      hasLength(1),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('keyboardShortcut_ctrlD_duplicatesSelectedShape', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(drawingBoardNotifierProvider.notifier);
+    notifier.startDrawing(
+      const Offset(10, 10),
+      const ToolSelectionState(
+        toolType: ToolType.shape,
+        shapeType: ShapeType.rectangle,
+      ),
+    );
+    notifier.updateDrawing(const Offset(60, 60));
+    notifier.commitDrawing();
+    final shapeId = container
+        .read(drawingBoardNotifierProvider)
+        .finalizedShapes
+        .single
+        .id;
+    notifier.selectShape(shapeId);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithMaterialApp(const InteractiveCanvas()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyD);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyD);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(
+      container.read(drawingBoardNotifierProvider).finalizedShapes,
+      hasLength(2),
+    );
+    // New duplicate is auto-selected
+    expect(
+      container.read(drawingBoardNotifierProvider).selectedShapeId,
+      isNot(shapeId),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('keyboardShortcut_ctrlA_switchesToCursorTool', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    // Start on brush
+    expect(
+      container.read(toolSelectionNotifierProvider).toolType,
+      ToolType.brush,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithMaterialApp(const InteractiveCanvas()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(
+      container.read(toolSelectionNotifierProvider).toolType,
+      ToolType.cursor,
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('keyboardShortcut_ctrlS_firesOnSaveCallback', (tester) async {
+    var saveCallCount = 0;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: wrapWithMaterialApp(
+          InteractiveCanvas(onSave: () => saveCallCount++),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyS);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyS);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(saveCallCount, 1);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('keyboardShortcut_ctrlO_firesOnLoadCallback', (tester) async {
+    var loadCallCount = 0;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: wrapWithMaterialApp(
+          InteractiveCanvas(onLoad: () => loadCallCount++),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyO);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyO);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(loadCallCount, 1);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+    'keyboardShortcut_deleteKey_isNoOp_whenNothingSelected',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(drawingBoardNotifierProvider.notifier);
+      notifier.startDrawing(
+        const Offset(10, 10),
+        const ToolSelectionState(toolType: ToolType.brush),
+      );
+      notifier.updateDrawing(const Offset(80, 80));
+      notifier.commitDrawing();
+      notifier.selectShape(null); // ensure nothing is selected
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: wrapWithMaterialApp(const InteractiveCanvas()),
+        ),
+      );
+      await tester.pump();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.delete);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.delete);
+      await tester.pump();
+
+      // Shape should still be present
+      expect(
+        container.read(drawingBoardNotifierProvider).finalizedShapes,
+        hasLength(1),
+      );
+      await tester.pumpAndSettle();
+    },
+  );
 }
