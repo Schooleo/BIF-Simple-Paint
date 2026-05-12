@@ -139,6 +139,11 @@ class ToolPaletteState extends ConsumerState<ToolPalette> {
         onTap: drawingState.canRedo ? drawingBoardNotifier.redo : null,
       ),
       _FileAction(
+        label: 'Save',
+        icon: Icons.save_outlined,
+        onTap: widget.onSave,
+      ),
+      _FileAction(
         label: 'Export',
         icon: Icons.ios_share,
         onTap: widget.onExport,

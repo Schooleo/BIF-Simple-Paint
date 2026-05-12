@@ -19,6 +19,7 @@ class DatabaseService {
   static const String idKey = 'id';
   static const String nameKey = 'name';
   static const String filePathKey = 'filePath';
+  static const String documentUriKey = 'documentUri';
   static const String lastEditedTimeKey = 'lastEditedTime';
   static const String thumbnailDataKey = 'thumbnailData';
 
@@ -75,18 +76,25 @@ class DatabaseService {
     await _writeMetadataEntries(entries);
 
     final deletedFilePath = deletedEntry?[filePathKey] as String?;
-    if (deletedFilePath == null || deletedFilePath.isEmpty) {
-      return;
-    }
-
     final managedDraftsPath = (await _draftsDirectory()).path;
-    if (!deletedFilePath.startsWith(managedDraftsPath)) {
+    if (deletedFilePath != null &&
+        deletedFilePath.isNotEmpty &&
+        deletedFilePath.startsWith(managedDraftsPath)) {
+      final file = File(deletedFilePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
+
+    final draftPath = await resolveDraftFilePath(canvasId);
+    if (_normalizePathForComparison(deletedFilePath) ==
+        _normalizePathForComparison(draftPath)) {
       return;
     }
 
-    final file = File(deletedFilePath);
-    if (await file.exists()) {
-      await file.delete();
+    final draftFile = File(draftPath);
+    if (await draftFile.exists()) {
+      await draftFile.delete();
     }
   }
 
@@ -95,10 +103,25 @@ class DatabaseService {
     return '${draftsDirectory.path}${Platform.pathSeparator}$canvasId.mypt';
   }
 
+  Future<String> writeDraftCopy({
+    required String canvasId,
+    required Uint8List canvasBytes,
+    bool synchronous = false,
+  }) async {
+    final draftPath = await resolveDraftFilePath(canvasId);
+    if (synchronous) {
+      _writeCanvasBytesSync(draftPath, canvasBytes);
+    } else {
+      await _writeCanvasBytes(draftPath, canvasBytes);
+    }
+    return draftPath;
+  }
+
   Future<String> persistCanvas({
     required String canvasId,
     required String name,
     String? filePath,
+    String? documentUri,
     required Uint8List canvasBytes,
     Uint8List? thumbnailData,
     DateTime? lastEditedTime,
@@ -109,6 +132,7 @@ class DatabaseService {
       idKey: canvasId,
       nameKey: name,
       filePathKey: resolvedFilePath,
+      documentUriKey: documentUri,
       lastEditedTimeKey: (lastEditedTime ?? DateTime.now()).toIso8601String(),
       thumbnailDataKey: thumbnailData,
     });
@@ -135,6 +159,9 @@ class DatabaseService {
 
     return File(filePath).exists();
   }
+
+  String _normalizePathForComparison(String? path) =>
+      (path ?? '').replaceAll('\\', '/').trim();
 
   Future<List<Map<String, Object?>>> _readMetadataEntries() async {
     final file = await _metadataFile();
@@ -239,6 +266,7 @@ class DatabaseService {
     final legacyTitle = _stringValue(values['title']).trim();
     final name = primaryName.isEmpty ? legacyTitle : primaryName;
     final filePath = _stringValue(values[filePathKey]);
+    final documentUri = _stringValue(values[documentUriKey]).trim();
     final lastEditedTime = _normalizeTimestamp(values[lastEditedTimeKey]);
     final thumbnailData = _normalizeThumbnail(values[thumbnailDataKey]);
 
@@ -246,6 +274,7 @@ class DatabaseService {
       idKey: id,
       nameKey: name.isEmpty ? 'Untitled' : name,
       filePathKey: filePath,
+      documentUriKey: documentUri,
       lastEditedTimeKey: lastEditedTime,
       thumbnailDataKey: thumbnailData,
     };

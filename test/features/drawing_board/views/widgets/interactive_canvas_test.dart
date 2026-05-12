@@ -272,17 +272,27 @@ void main() {
   // Skill 3: Write Widget Tests for Export UI
   // --------------------------------------------------------------------------
   testWidgets('exportIcon_whenRendered_existsInMobileTopBar', (tester) async {
+    var saveTapped = false;
     await tester.pumpWidget(
       ProviderScope(
         child: wrapWithMaterialApp(
           MobileTopBar(
+            onSave: () async {
+              saveTapped = true;
+            },
             onCaptureImage: ({bool asJpeg = false}) async => Uint8List(0),
           ),
         ),
       ),
     );
 
+    expect(find.byIcon(Icons.save_outlined), findsOneWidget);
     expect(find.byIcon(Icons.save_alt), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.save_outlined));
+    await tester.pump();
+
+    expect(saveTapped, isTrue);
   });
 
   testWidgets('exportIcon_whenTapped_showsSaveOptions', (tester) async {
@@ -290,6 +300,7 @@ void main() {
       ProviderScope(
         child: wrapWithMaterialApp(
           MobileTopBar(
+            onSave: () async {},
             onCaptureImage: ({bool asJpeg = false}) async => Uint8List(0),
           ),
         ),
@@ -310,6 +321,7 @@ void main() {
   testWidgets('dropTarget_withMyptFile_triggersLoadFromBytes', (tester) async {
     final mockNotifier = MockDrawingBoardNotifier();
     when(() => mockNotifier.loadFromBytes(any())).thenAnswer((_) async => null);
+    when(() => mockNotifier.setCurrentFilePath(any())).thenReturn(null);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -344,6 +356,7 @@ void main() {
     await tester.pumpAndSettle();
 
     verify(() => mockNotifier.loadFromBytes(any())).called(1);
+    verify(() => mockNotifier.setCurrentFilePath('drawing.mypt')).called(1);
   });
 
   testWidgets('dropTarget_withInvalidFile_ignoresDrop', (tester) async {
@@ -405,6 +418,47 @@ void main() {
     verifyNever(() => mockNotifier.loadFromBytes(any()));
   });
 
+  testWidgets('dropTarget_acceptsMyptFilesWhenOnlyPathHasExtension', (
+    tester,
+  ) async {
+    final mockNotifier = MockDrawingBoardNotifier();
+    when(() => mockNotifier.loadFromBytes(any())).thenAnswer((_) async => null);
+    when(() => mockNotifier.setCurrentFilePath(any())).thenReturn(null);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          drawingBoardNotifierProvider.overrideWith(() => mockNotifier),
+        ],
+        child: wrapWithMaterialApp(const CanvasArea()),
+      ),
+    );
+
+    final dropTarget = tester.widget<DropTarget>(find.byType(DropTarget));
+    final fakeFile = DropItemFile.fromData(
+      Uint8List.fromList([1, 2, 3]),
+      name: '',
+      path: '/tmp/drawing.mypt',
+    );
+
+    await tester.runAsync(() async {
+      dropTarget.onDragDone!(
+        DropDoneDetails(
+          files: [fakeFile],
+          localPosition: Offset.zero,
+          globalPosition: Offset.zero,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pumpAndSettle();
+
+    verify(() => mockNotifier.loadFromBytes(any())).called(1);
+    verify(
+      () => mockNotifier.setCurrentFilePath('/tmp/drawing.mypt'),
+    ).called(1);
+  });
+
   testWidgets('desktop shortcut bindings map undo and redo actions', (
     tester,
   ) async {
@@ -432,6 +486,12 @@ void main() {
     shortcuts
         .bindings[const SingleActivator(LogicalKeyboardKey.keyY, control: true)]
         ?.call();
+    expect(
+      shortcuts.bindings.containsKey(
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true),
+      ),
+      isTrue,
+    );
     shortcuts
         .bindings[const SingleActivator(
           LogicalKeyboardKey.keyZ,

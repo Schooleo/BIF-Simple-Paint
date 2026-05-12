@@ -65,5 +65,31 @@ void main() {
       expect(afterDelete, isEmpty);
       expect(await File(draftPath).exists(), isFalse);
     });
+
+    test(
+      'deleteCanvas also removes the shadow draft for external saves',
+      () async {
+        const canvasId = 'external-1';
+        final externalPath = '${tempDirectory.path}/manual/external.mypt';
+        await databaseService.persistCanvas(
+          canvasId: canvasId,
+          name: 'External Draft',
+          filePath: externalPath,
+          canvasBytes: Uint8List.fromList(<int>[7, 8, 9]),
+        );
+        final draftPath = await databaseService.writeDraftCopy(
+          canvasId: canvasId,
+          canvasBytes: Uint8List.fromList(<int>[1, 2, 3]),
+        );
+
+        expect(await File(externalPath).exists(), isTrue);
+        expect(await File(draftPath).exists(), isTrue);
+
+        await repository.deleteCanvas(canvasId);
+
+        expect(await File(externalPath).exists(), isTrue);
+        expect(await File(draftPath).exists(), isFalse);
+      },
+    );
   });
 }

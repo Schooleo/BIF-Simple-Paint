@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:bif_simple_paint/core/services/database_service.dart';
+import 'package:bif_simple_paint/core/services/document_file_service.dart';
 import 'package:bif_simple_paint/core/utils/binary_serializer.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
@@ -8,6 +11,49 @@ import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class FakeDocumentFileService implements DocumentFileService {
+  final Map<String, Uint8List> writes = <String, Uint8List>{};
+  int writeCount = 0;
+
+  @override
+  Future<DocumentFileReference?> createDocument({
+    required String suggestedFileName,
+    required Uint8List bytes,
+  }) async {
+    final uri = 'content://documents/$suggestedFileName';
+    writes[uri] = bytes;
+    return DocumentFileReference(
+      uri: uri,
+      displayName: suggestedFileName,
+      bytes: bytes,
+    );
+  }
+
+  @override
+  Future<bool> isSupported() async => true;
+
+  @override
+  Future<DocumentFileReference?> openDocument() async => null;
+
+  @override
+  Future<DocumentFileReference> readDocument(String uri) async {
+    return DocumentFileReference(
+      uri: uri,
+      displayName: uri.split('/').last,
+      bytes: writes[uri],
+    );
+  }
+
+  @override
+  Future<void> writeDocument({
+    required String uri,
+    required Uint8List bytes,
+  }) async {
+    writeCount += 1;
+    writes[uri] = bytes;
+  }
+}
 
 void main() {
   group('DrawingBoardNotifier', () {
@@ -358,6 +404,211 @@ void main() {
         throwsUnsupportedError,
       );
     });
+
+    test(
+      'saveToFilePath updates currentFilePath and future autosaves persist to the saved location',
+      () async {
+        final tempDirectory = await Directory.systemTemp.createTemp(
+          'drawing-board-save',
+        );
+        addTearDown(() async {
+          if (await tempDirectory.exists()) {
+            await tempDirectory.delete(recursive: true);
+          }
+        });
+
+        final databaseService = DatabaseService(
+          storageRootDirectory: tempDirectory,
+        );
+        final saveContainer = ProviderContainer(
+          overrides: <Override>[
+            databaseServiceProvider.overrideWithValue(databaseService),
+          ],
+        );
+        addTearDown(saveContainer.dispose);
+
+        final saveNotifier = saveContainer.read(
+          drawingBoardNotifierProvider.notifier,
+        );
+        saveNotifier.updateCanvasTitle('Manual Save');
+        saveNotifier.startDrawing(const Offset(5, 5), selection());
+        saveNotifier.updateDrawing(const Offset(35, 35));
+        saveNotifier.commitDrawing();
+        final serializedBytes = await saveNotifier.buildSerializedCanvasBytes();
+        final decodedBeforeSave = await decodeShapes(serializedBytes);
+        expect(decodedBeforeSave.shapes, hasLength(1));
+
+        final savedPath = await saveNotifier.saveToFilePathWithBytes(
+          '${tempDirectory.path}/manual/saved_canvas.mypt',
+          canvasBytes: serializedBytes,
+        );
+        expect(savedPath, '${tempDirectory.path}/manual/saved_canvas.mypt');
+        expect(
+          saveContainer.read(drawingBoardNotifierProvider).currentFilePath,
+          savedPath,
+        );
+
+        saveNotifier.startDrawing(const Offset(40, 40), selection());
+        saveNotifier.updateDrawing(const Offset(60, 60));
+        saveNotifier.commitDrawing();
+        await saveNotifier.flushPendingChanges(writeSynchronously: true);
+
+        final metadata = await databaseService.fetchCanvasMetadata();
+        expect(metadata, hasLength(1));
+        expect(metadata.single[DatabaseService.filePathKey], savedPath);
+        expect(await File(savedPath!).exists(), isTrue);
+
+        final savedBytes = await File(savedPath).readAsBytes();
+        final decoded = await decodeShapes(savedBytes);
+        expect(decoded.shapes, hasLength(2));
+
+        final draftPath = await databaseService.resolveDraftFilePath(
+          saveContainer.read(drawingBoardNotifierProvider).currentCanvasId,
+        );
+        expect(await File(draftPath).exists(), isTrue);
+        final draftBytes = await File(draftPath).readAsBytes();
+        final decodedDraft = await decodeShapes(draftBytes);
+        expect(decodedDraft.shapes, hasLength(2));
+      },
+    );
+
+    test(
+      'saveToDocumentReference updates metadata and future saves can target the document URI',
+      () async {
+        final tempDirectory = await Directory.systemTemp.createTemp(
+          'drawing-board-manual-ref',
+        );
+        addTearDown(() async {
+          if (await tempDirectory.exists()) {
+            await tempDirectory.delete(recursive: true);
+          }
+        });
+
+        final databaseService = DatabaseService(
+          storageRootDirectory: tempDirectory,
+        );
+        final documentFileService = FakeDocumentFileService();
+        final saveContainer = ProviderContainer(
+          overrides: <Override>[
+            databaseServiceProvider.overrideWithValue(databaseService),
+            documentFileServiceProvider.overrideWithValue(documentFileService),
+          ],
+        );
+        addTearDown(saveContainer.dispose);
+
+        final saveNotifier = saveContainer.read(
+          drawingBoardNotifierProvider.notifier,
+        );
+        final created = await saveNotifier.createNewCanvas(
+          title: 'Mobile Save',
+        );
+        expect(created, isTrue);
+        saveNotifier.startDrawing(const Offset(5, 5), selection());
+        saveNotifier.updateDrawing(const Offset(35, 35));
+        saveNotifier.commitDrawing();
+        final draftPathBefore = saveContainer
+            .read(drawingBoardNotifierProvider)
+            .currentFilePath;
+
+        final serialized = await saveNotifier.buildSerializedCanvasBytes();
+        await saveNotifier.saveToDocumentReference(
+          const DocumentFileReference(
+            uri: 'content://documents/mobile-save.mypt',
+            displayName: 'Mobile Save.mypt',
+          ),
+          canvasBytes: serialized,
+        );
+
+        final state = saveContainer.read(drawingBoardNotifierProvider);
+        expect(state.currentFilePath, 'Mobile Save.mypt');
+        expect(
+          state.currentDocumentUri,
+          'content://documents/mobile-save.mypt',
+        );
+        expect(state.currentFilePath, isNot(draftPathBefore));
+
+        final metadata = await databaseService.fetchCanvasMetadata();
+        expect(metadata, hasLength(1));
+        expect(
+          metadata.single[DatabaseService.filePathKey],
+          'Mobile Save.mypt',
+        );
+        expect(
+          metadata.single[DatabaseService.documentUriKey],
+          'content://documents/mobile-save.mypt',
+        );
+        expect(
+          documentFileService.writes['content://documents/mobile-save.mypt'],
+          isNotNull,
+        );
+        expect(documentFileService.writeCount, 1);
+
+        saveNotifier.startDrawing(const Offset(40, 40), selection());
+        saveNotifier.updateDrawing(const Offset(60, 60));
+        saveNotifier.commitDrawing();
+        await saveNotifier.flushPendingChanges(writeSynchronously: true);
+
+        final draftPath = await databaseService.resolveDraftFilePath(
+          saveContainer.read(drawingBoardNotifierProvider).currentCanvasId,
+        );
+        expect(await File(draftPath).exists(), isTrue);
+        final draftBytes = await File(draftPath).readAsBytes();
+        final decodedDraft = await decodeShapes(draftBytes);
+        expect(decodedDraft.shapes, hasLength(2));
+
+        final externalBytes =
+            documentFileService.writes['content://documents/mobile-save.mypt'];
+        expect(externalBytes, isNotNull);
+        final decodedExternal = await decodeShapes(externalBytes!);
+        expect(decodedExternal.shapes, hasLength(2));
+      },
+    );
+
+    test(
+      'saveToDocumentReference can skip an extra write for already-created mobile documents',
+      () async {
+        final tempDirectory = await Directory.systemTemp.createTemp(
+          'drawing-board-manual-ref-skip-write',
+        );
+        addTearDown(() async {
+          if (await tempDirectory.exists()) {
+            await tempDirectory.delete(recursive: true);
+          }
+        });
+
+        final databaseService = DatabaseService(
+          storageRootDirectory: tempDirectory,
+        );
+        final documentFileService = FakeDocumentFileService();
+        final saveContainer = ProviderContainer(
+          overrides: <Override>[
+            databaseServiceProvider.overrideWithValue(databaseService),
+            documentFileServiceProvider.overrideWithValue(documentFileService),
+          ],
+        );
+        addTearDown(saveContainer.dispose);
+
+        final saveNotifier = saveContainer.read(
+          drawingBoardNotifierProvider.notifier,
+        );
+        final created = await saveNotifier.createNewCanvas(
+          title: 'Mobile Save',
+        );
+        expect(created, isTrue);
+
+        final serialized = await saveNotifier.buildSerializedCanvasBytes();
+        await saveNotifier.saveToDocumentReference(
+          const DocumentFileReference(
+            uri: 'content://documents/mobile-save.mypt',
+            displayName: 'Mobile Save.mypt',
+          ),
+          canvasBytes: serialized,
+          writeDocument: false,
+        );
+
+        expect(documentFileService.writeCount, 0);
+      },
+    );
 
     test('provider implementation stays isolated from repository concerns', () {
       final notifierSource = File(

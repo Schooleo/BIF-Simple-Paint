@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:bif_simple_paint/core/services/database_service.dart';
+import 'package:bif_simple_paint/core/services/document_file_service.dart';
 import 'package:bif_simple_paint/core/utils/binary_serializer.dart';
 import 'package:bif_simple_paint/core/utils/thumbnail_generator.dart';
 import 'package:bif_simple_paint/features/canvas_list/providers/canvas_list_notifier.dart';
@@ -242,10 +243,12 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
     String? filePath, {
     String? canvasId,
     String? canvasName,
+    String? currentDocumentUri,
   }) {
     state = state.copyWith(
       currentCanvasId: canvasId,
       currentFilePath: filePath,
+      currentDocumentUri: currentDocumentUri,
       currentCanvasName: canvasName ?? _canvasNameFor(filePath),
       shouldFocusCanvasTitle: false,
     );
@@ -285,6 +288,10 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
   }
 
   Future<bool> isUsingDraftPath() async {
+    if (state.currentDocumentUri?.trim().isNotEmpty == true) {
+      return false;
+    }
+
     final currentPath = state.currentFilePath;
     if (currentPath == null || currentPath.trim().isEmpty) {
       return true;
@@ -478,16 +485,53 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
   Future<void> _persistCurrentCanvas({bool writeSynchronously = false}) async {
     final databaseService = ref.read(databaseServiceProvider);
     final snapshot = _cloneSnapshot(state.finalizedShapes);
-    final serialized = await encodeShapes(
-      snapshot,
-      _serializedCanvasWidth,
-      _serializedCanvasHeight,
-    );
+    final serialized = await buildSerializedCanvasBytes();
     final thumbnailData = await ThumbnailGenerator.generate(snapshot);
+    final currentDocumentUri = state.currentDocumentUri?.trim();
+    final draftPath = await databaseService.resolveDraftFilePath(
+      state.currentCanvasId,
+    );
+    final currentFilePath = state.currentFilePath;
+    final usesDraftPath =
+        currentDocumentUri == null &&
+        (currentFilePath == null ||
+            _normalizePath(currentFilePath) == _normalizePath(draftPath));
+
+    if (!usesDraftPath) {
+      await databaseService.writeDraftCopy(
+        canvasId: state.currentCanvasId,
+        canvasBytes: serialized,
+        synchronous: writeSynchronously,
+      );
+    }
+
+    if (currentDocumentUri != null && currentDocumentUri.isNotEmpty) {
+      await ref
+          .read(documentFileServiceProvider)
+          .writeDocument(uri: currentDocumentUri, bytes: serialized);
+      await databaseService.insertCanvasMetadata(<String, Object?>{
+        DatabaseService.idKey: state.currentCanvasId,
+        DatabaseService.nameKey: state.currentCanvasName,
+        DatabaseService.filePathKey:
+            state.currentFilePath ?? _canvasNameFor(state.currentCanvasName),
+        DatabaseService.documentUriKey: currentDocumentUri,
+        DatabaseService.lastEditedTimeKey: DateTime.now().toIso8601String(),
+        DatabaseService.thumbnailDataKey: thumbnailData,
+      });
+
+      if (_isDisposed) {
+        return;
+      }
+
+      unawaited(ref.read(canvasListNotifierProvider.notifier).loadCanvases());
+      return;
+    }
+
     final resolvedPath = await databaseService.persistCanvas(
       canvasId: state.currentCanvasId,
       name: state.currentCanvasName,
       filePath: state.currentFilePath,
+      documentUri: state.currentDocumentUri,
       canvasBytes: serialized,
       thumbnailData: thumbnailData,
       lastEditedTime: DateTime.now(),
@@ -506,18 +550,42 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
   }
 
   Future<String?> saveToFilePath(String? filePath) async {
-    final databaseService = ref.read(databaseServiceProvider);
+    return saveToFilePathWithBytes(filePath);
+  }
+
+  Future<Uint8List> buildSerializedCanvasBytes() async {
     final snapshot = _cloneSnapshot(state.finalizedShapes);
-    final serialized = await encodeShapes(
+    return encodeShapes(
       snapshot,
       _serializedCanvasWidth,
       _serializedCanvasHeight,
     );
+  }
+
+  Future<String?> saveToFilePathWithBytes(
+    String? filePath, {
+    Uint8List? canvasBytes,
+  }) async {
+    final databaseService = ref.read(databaseServiceProvider);
+    final snapshot = _cloneSnapshot(state.finalizedShapes);
+    final serialized = canvasBytes ?? await buildSerializedCanvasBytes();
     final thumbnailData = await ThumbnailGenerator.generate(snapshot);
+    final resolvedTargetPath = filePath ?? state.currentFilePath;
+    final draftPath = await databaseService.resolveDraftFilePath(
+      state.currentCanvasId,
+    );
+    if (resolvedTargetPath == null ||
+        _normalizePath(resolvedTargetPath) != _normalizePath(draftPath)) {
+      await databaseService.writeDraftCopy(
+        canvasId: state.currentCanvasId,
+        canvasBytes: serialized,
+      );
+    }
     final resolvedPath = await databaseService.persistCanvas(
       canvasId: state.currentCanvasId,
       name: state.currentCanvasName,
-      filePath: filePath ?? state.currentFilePath,
+      filePath: resolvedTargetPath,
+      documentUri: null,
       canvasBytes: serialized,
       thumbnailData: thumbnailData,
       lastEditedTime: DateTime.now(),
@@ -528,16 +596,62 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
     }
 
     _lastSavedRevision = _revision;
-    unawaited(ref.read(canvasListNotifierProvider.notifier).loadCanvases());
+    await ref.read(canvasListNotifierProvider.notifier).loadCanvases();
     final resolvedName = state.currentCanvasName.trim().isEmpty
         ? _canvasNameFor(resolvedPath)
         : state.currentCanvasName;
     state = state.copyWith(
       currentFilePath: resolvedPath,
+      currentDocumentUri: null,
       currentCanvasName: resolvedName,
     );
 
     return resolvedPath;
+  }
+
+  Future<void> saveToDocumentReference(
+    DocumentFileReference document, {
+    Uint8List? canvasBytes,
+    bool writeDocument = true,
+  }) async {
+    final databaseService = ref.read(databaseServiceProvider);
+    final snapshot = _cloneSnapshot(state.finalizedShapes);
+    final serialized = canvasBytes ?? await buildSerializedCanvasBytes();
+    final thumbnailData = await ThumbnailGenerator.generate(snapshot);
+    final displayName = document.displayName.trim().isEmpty
+        ? _canvasNameFor(document.uri)
+        : document.displayName;
+    final resolvedName = state.currentCanvasName.trim().isEmpty
+        ? _canvasNameFor(displayName)
+        : state.currentCanvasName;
+
+    await databaseService.writeDraftCopy(
+      canvasId: state.currentCanvasId,
+      canvasBytes: serialized,
+    );
+
+    if (writeDocument) {
+      await ref
+          .read(documentFileServiceProvider)
+          .writeDocument(uri: document.uri, bytes: serialized);
+    }
+
+    await databaseService.insertCanvasMetadata(<String, Object?>{
+      DatabaseService.idKey: state.currentCanvasId,
+      DatabaseService.nameKey: resolvedName,
+      DatabaseService.filePathKey: displayName,
+      DatabaseService.documentUriKey: document.uri,
+      DatabaseService.lastEditedTimeKey: DateTime.now().toIso8601String(),
+      DatabaseService.thumbnailDataKey: thumbnailData,
+    });
+    await ref.read(canvasListNotifierProvider.notifier).loadCanvases();
+    _lastSavedRevision = _revision;
+
+    state = state.copyWith(
+      currentCanvasName: resolvedName,
+      currentFilePath: displayName,
+      currentDocumentUri: document.uri,
+    );
   }
 
   String _generateCanvasId() =>
@@ -722,6 +836,7 @@ class DrawingBoardState {
     required this.currentCanvasId,
     required this.currentCanvasName,
     required this.currentFilePath,
+    required this.currentDocumentUri,
     required this.shouldFocusCanvasTitle,
   }) : finalizedShapes = List<BaseShape>.unmodifiable(finalizedShapes),
        undoStack = List<List<BaseShape>>.unmodifiable(
@@ -739,6 +854,7 @@ class DrawingBoardState {
     String currentCanvasId = 'canvas_initial',
     String currentCanvasName = 'Untitled',
     String? currentFilePath,
+    String? currentDocumentUri,
     bool shouldFocusCanvasTitle = false,
   }) {
     return DrawingBoardState._(
@@ -750,6 +866,7 @@ class DrawingBoardState {
       currentCanvasId: currentCanvasId,
       currentCanvasName: currentCanvasName,
       currentFilePath: currentFilePath,
+      currentDocumentUri: currentDocumentUri,
       shouldFocusCanvasTitle: shouldFocusCanvasTitle,
     );
   }
@@ -762,6 +879,7 @@ class DrawingBoardState {
   final String currentCanvasId;
   final String currentCanvasName;
   final String? currentFilePath;
+  final String? currentDocumentUri;
   final bool shouldFocusCanvasTitle;
 
   bool get canUndo => undoStack.isNotEmpty;
@@ -796,6 +914,7 @@ class DrawingBoardState {
     String? currentCanvasId,
     String? currentCanvasName,
     Object? currentFilePath = _stateSentinel,
+    Object? currentDocumentUri = _stateSentinel,
     bool? shouldFocusCanvasTitle,
   }) {
     return DrawingBoardState._(
@@ -813,6 +932,9 @@ class DrawingBoardState {
       currentFilePath: identical(currentFilePath, _stateSentinel)
           ? this.currentFilePath
           : currentFilePath as String?,
+      currentDocumentUri: identical(currentDocumentUri, _stateSentinel)
+          ? this.currentDocumentUri
+          : currentDocumentUri as String?,
       shouldFocusCanvasTitle:
           shouldFocusCanvasTitle ?? this.shouldFocusCanvasTitle,
     );

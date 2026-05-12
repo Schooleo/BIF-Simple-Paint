@@ -6,6 +6,7 @@ import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
+import 'package:bif_simple_paint/features/drawing_board/utils/manual_canvas_save.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/canvas_title_field.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/eraser_tool_icon.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/interactive_canvas.dart';
@@ -67,7 +68,10 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
               top: 12,
               left: 16,
               right: 16,
-              child: MobileTopBar(onCaptureImage: _captureImage),
+              child: MobileTopBar(
+                onSave: () => saveCanvasManually(context, ref),
+                onCaptureImage: _captureImage,
+              ),
             ),
             StrokeWidthPreviewOverlay(controller: _strokePreviewController),
             AnimatedPositioned(
@@ -89,8 +93,13 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
 }
 
 class MobileTopBar extends ConsumerWidget {
-  const MobileTopBar({super.key, required this.onCaptureImage});
+  const MobileTopBar({
+    super.key,
+    required this.onSave,
+    required this.onCaptureImage,
+  });
 
+  final Future<void> Function() onSave;
   final CaptureImageCallback onCaptureImage;
 
   @override
@@ -126,6 +135,16 @@ class MobileTopBar extends ConsumerWidget {
                 context,
               ).textTheme.titleSmall?.copyWith(color: textColor),
             ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: () {
+              onSave();
+            },
+            icon: Icon(Icons.save_outlined, color: iconColor, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: 'Save',
           ),
           const SizedBox(width: 8),
           IconButton(
