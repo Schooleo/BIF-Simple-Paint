@@ -1,5 +1,8 @@
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:bif_simple_paint/core/services/database_service.dart';
+import 'package:bif_simple_paint/core/services/document_file_service.dart';
 import 'package:bif_simple_paint/core/routing/app_router.dart';
 import 'package:bif_simple_paint/core/utils/binary_serializer.dart';
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
@@ -14,6 +17,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
+
+bool shouldResetDesktopBoardAfterDelete({
+  required double screenWidth,
+  required String activeCanvasId,
+  required String deletedCanvasId,
+}) {
+  return screenWidth >= 800 && activeCanvasId == deletedCanvasId;
+}
 
 class CanvasListScreen extends ConsumerStatefulWidget {
   const CanvasListScreen({super.key});
@@ -189,10 +200,59 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
       final navigator = Navigator.of(context);
       final shouldNavigate = MediaQuery.sizeOf(context).width < 800;
       final repository = ref.read(canvasListRepositoryProvider);
+      final documentService = ref.read(documentFileServiceProvider);
 
       try {
-        final exists = await repository.canvasFileExists(metadata.filePath);
-        if (!exists) {
+        final documentUri = metadata.documentUri?.trim();
+        if (documentUri != null &&
+            documentUri.isNotEmpty &&
+            await documentService.isSupported()) {
+          try {
+            final document = await documentService.readDocument(documentUri);
+            final documentBytes = document.bytes;
+            if (documentBytes == null) {
+              throw StateError('Selected document did not return bytes.');
+            }
+
+            if (!context.mounted) {
+              return;
+            }
+
+            final drawingNotifier = ref.read(
+              drawingBoardNotifierProvider.notifier,
+            );
+            final failure = await drawingNotifier.loadFromBytes(documentBytes);
+            if (failure != null) {
+              if (!context.mounted) {
+                return;
+              }
+
+              _showToast(context, _loadFailureMessage(metadata.name, failure));
+              return;
+            }
+
+            drawingNotifier.setCurrentFilePath(
+              document.displayName,
+              canvasId: metadata.id,
+              canvasName: metadata.name,
+              currentDocumentUri: document.uri,
+            );
+
+            if (!context.mounted) {
+              return;
+            }
+
+            if (shouldNavigate) {
+              navigator.pushNamed(AppRouter.drawingBoardPath);
+            }
+            return;
+          } catch (_) {
+            // Fall through to the readable-path / draft fallback below.
+          }
+        }
+
+        final resolvedPath = await _resolveReadableCanvasPath(metadata);
+        if (resolvedPath == null) {
           if (!context.mounted) {
             return;
           }
@@ -201,7 +261,7 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
           return;
         }
 
-        final bytes = await repository.loadCanvasBytes(metadata.filePath);
+        final bytes = await repository.loadCanvasBytes(resolvedPath);
         if (!context.mounted) {
           return;
         }
@@ -218,7 +278,7 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
         }
 
         drawingNotifier.setCurrentFilePath(
-          metadata.filePath,
+          resolvedPath,
           canvasId: metadata.id,
           canvasName: metadata.name,
         );
@@ -238,6 +298,22 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
         _showToast(context, 'Unable to open ${metadata.name}.');
       }
     });
+  }
+
+  Future<String?> _resolveReadableCanvasPath(CanvasMetadata metadata) async {
+    final repository = ref.read(canvasListRepositoryProvider);
+    if (await repository.canvasFileExists(metadata.filePath)) {
+      return metadata.filePath;
+    }
+
+    final draftPath = await ref
+        .read(databaseServiceProvider)
+        .resolveDraftFilePath(metadata.id);
+    if (await repository.canvasFileExists(draftPath)) {
+      return draftPath;
+    }
+
+    return null;
   }
 
   Future<void> _createCanvas(BuildContext context) async {
@@ -268,18 +344,98 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
       final navigator = Navigator.of(context);
       final shouldNavigate = MediaQuery.sizeOf(context).width < 800;
       final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
-      final result = await FilePicker.platform.pickFiles(
-        dialogTitle: 'Open canvas',
-        type: FileType.custom,
-        allowedExtensions: const ['mypt'],
-      );
+      final isMobile = Platform.isAndroid || Platform.isIOS;
+      if (isMobile &&
+          await ref.read(documentFileServiceProvider).isSupported()) {
+        try {
+          final document = await ref
+              .read(documentFileServiceProvider)
+              .openDocument();
+          if (document == null) {
+            return;
+          }
+
+          if (!_isMyptFile(document.displayName)) {
+            if (!context.mounted) {
+              return;
+            }
+
+            _showToast(context, 'Please select a .mypt file.');
+            return;
+          }
+
+          final bytes = document.bytes;
+          if (bytes == null) {
+            if (!context.mounted) {
+              return;
+            }
+
+            _showToast(context, 'Unable to read the selected file.');
+            return;
+          }
+
+          final failure = await drawingNotifier.loadFromBytes(bytes);
+          if (failure != null) {
+            if (!context.mounted) {
+              return;
+            }
+
+            _showToast(
+              context,
+              _loadFailureMessage(document.displayName, failure),
+            );
+            return;
+          }
+
+          drawingNotifier.setCurrentFilePath(
+            document.displayName,
+            currentDocumentUri: document.uri,
+          );
+
+          if (!context.mounted) {
+            return;
+          }
+
+          if (shouldNavigate) {
+            navigator.pushNamed(AppRouter.drawingBoardPath);
+          }
+          return;
+        } catch (_) {
+          if (!context.mounted) {
+            return;
+          }
+
+          _showToast(context, 'Unable to open the selected file.');
+          return;
+        }
+      }
+
+      FilePickerResult? result;
+      try {
+        result = await FilePicker.platform.pickFiles(
+          dialogTitle: 'Open canvas',
+          type: isMobile ? FileType.any : FileType.custom,
+          allowedExtensions: isMobile ? null : const ['mypt'],
+          withData: isMobile,
+        );
+      } catch (_) {
+        if (!context.mounted) {
+          return;
+        }
+
+        _showToast(context, 'Unable to open the selected file.');
+        return;
+      }
       if (result == null || result.files.isEmpty) {
         return;
       }
 
       final selected = result.files.first;
       final path = selected.path;
-      if (path == null || path.trim().isEmpty) {
+      final name = selected.name.trim();
+      final hasPath = path != null && path.trim().isNotEmpty;
+      final candidateName = hasPath ? path : name;
+      if (candidateName.trim().isEmpty) {
         if (!context.mounted) {
           return;
         }
@@ -288,7 +444,7 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
         return;
       }
 
-      if (!path.toLowerCase().endsWith('.mypt')) {
+      if (!_isMyptFile(candidateName)) {
         if (!context.mounted) {
           return;
         }
@@ -297,17 +453,29 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
         return;
       }
 
-      final file = File(path);
-      if (!await file.exists()) {
+      Uint8List? bytes = selected.bytes;
+      if (bytes == null && hasPath) {
+        final file = File(path);
+        if (!await file.exists()) {
+          if (!context.mounted) {
+            return;
+          }
+
+          _showToast(context, 'Selected file no longer exists.');
+          return;
+        }
+
+        bytes = await file.readAsBytes();
+      }
+
+      if (bytes == null) {
         if (!context.mounted) {
           return;
         }
 
-        _showToast(context, 'Selected file no longer exists.');
+        _showToast(context, 'Unable to read the selected file.');
         return;
       }
-
-      final bytes = await file.readAsBytes();
       if (!context.mounted) {
         return;
       }
@@ -320,7 +488,7 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
 
         _showToast(
           context,
-          _loadFailureMessage(_fileNameFromPath(path), failure),
+          _loadFailureMessage(_fileNameFromPath(candidateName), failure),
         );
         return;
       }
@@ -336,6 +504,8 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
       }
     });
   }
+
+  bool _isMyptFile(String value) => value.toLowerCase().endsWith('.mypt');
 
   Future<void> _exportCanvas(
     BuildContext context,
@@ -471,6 +641,9 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
     BuildContext context,
     CanvasMetadata metadata,
   ) async {
+    final activeCanvasId = ref
+        .read(drawingBoardNotifierProvider)
+        .currentCanvasId;
     final success = await ref
         .read(canvasListNotifierProvider.notifier)
         .deleteCanvas(metadata.id);
@@ -481,6 +654,27 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
     if (!success) {
       _showToast(context, 'Unable to remove ${metadata.name}.');
       return;
+    }
+
+    if (shouldResetDesktopBoardAfterDelete(
+      screenWidth: MediaQuery.sizeOf(context).width,
+      activeCanvasId: activeCanvasId,
+      deletedCanvasId: metadata.id,
+    )) {
+      final resetSuccess = await ref
+          .read(drawingBoardNotifierProvider.notifier)
+          .createNewCanvas();
+      if (!context.mounted) {
+        return;
+      }
+
+      if (!resetSuccess) {
+        _showToast(
+          context,
+          'Removed ${metadata.name}, but could not reset the board.',
+        );
+        return;
+      }
     }
 
     _showToast(context, '${metadata.name} removed from recent projects.');

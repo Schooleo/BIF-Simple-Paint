@@ -85,16 +85,18 @@ class CanvasListNotifier extends Notifier<CanvasListState> {
       final now = DateTime.now();
       state = state.copyWith(
         canvases: state.canvases
-            .map((canvas) =>
-                canvas.id == canvasId
-                    ? CanvasMetadata(
-                        id: canvas.id,
-                        name: resolvedName,
-                        filePath: canvas.filePath,
-                        lastEditedTime: now,
-                        thumbnailData: canvas.thumbnailData,
-                      )
-                    : canvas)
+            .map(
+              (canvas) => canvas.id == canvasId
+                  ? CanvasMetadata(
+                      id: canvas.id,
+                      name: resolvedName,
+                      filePath: canvas.filePath,
+                      lastEditedTime: now,
+                      documentUri: canvas.documentUri,
+                      thumbnailData: canvas.thumbnailData,
+                    )
+                  : canvas,
+            )
             .toList(growable: false),
       );
       return true;

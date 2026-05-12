@@ -7,6 +7,7 @@ class CanvasMetadata {
     required this.name,
     required this.filePath,
     required this.lastEditedTime,
+    this.documentUri,
     this.thumbnailData,
   });
 
@@ -14,6 +15,7 @@ class CanvasMetadata {
   final String name;
   final String filePath;
   final DateTime lastEditedTime;
+  final String? documentUri;
   final Uint8List? thumbnailData;
 
   factory CanvasMetadata.fromMap(Map<String, Object?> map) {
@@ -30,6 +32,9 @@ class CanvasMetadata {
       lastEditedTime:
           DateTime.tryParse(map['lastEditedTime'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
+      documentUri: (map['documentUri'] as String?)?.trim().isEmpty == true
+          ? null
+          : map['documentUri'] as String?,
       thumbnailData: thumbnailData,
     );
   }

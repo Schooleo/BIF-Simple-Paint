@@ -1,7 +1,9 @@
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
 import 'package:bif_simple_paint/core/widgets/app_toast.dart';
+import 'package:bif_simple_paint/core/services/document_file_service.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
+import 'package:bif_simple_paint/features/drawing_board/utils/manual_canvas_save.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/canvas_title_field.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_board_mobile_layout.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/interactive_canvas.dart';
@@ -99,6 +101,11 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
                   ): () =>
                       _exportCanvas(context),
                   const SingleActivator(
+                    LogicalKeyboardKey.keyS,
+                    control: true,
+                  ): () =>
+                      saveCanvasManually(context, ref),
+                  const SingleActivator(
                     LogicalKeyboardKey.keyO,
                     control: true,
                   ): () =>
@@ -159,8 +166,10 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
               }
 
               final file = details.files.first;
-              final name = file.name.toLowerCase();
-              if (!name.endsWith('.mypt')) {
+              final candidatePath = file.path.trim().isNotEmpty
+                  ? file.path
+                  : file.name;
+              if (!candidatePath.toLowerCase().endsWith('.mypt')) {
                 return;
               }
 
@@ -174,7 +183,15 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
               final drawingNotifier = ref.read(
                 drawingBoardNotifierProvider.notifier,
               );
-              await drawingNotifier.loadFromBytes(bytes);
+              final failure = await drawingNotifier.loadFromBytes(bytes);
+              if (failure != null) {
+                if (!context.mounted) {
+                  return;
+                }
+
+                _showToast(context, _loadFailureMessage(failure));
+                return;
+              }
               if (filePath != null) {
                 drawingNotifier.setCurrentFilePath(filePath);
               }
@@ -228,7 +245,7 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
                   right: 24,
                   child: ToolPalette(
                     key: _toolPaletteKey,
-                    onSave: () => _saveCanvas(context),
+                    onSave: () => saveCanvasManually(context, ref),
                     onLoad: () => _loadCanvas(context),
                     onExport: () => _exportCanvas(context),
                     onStrokePreviewChanged: (double? width) {
@@ -272,18 +289,86 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
 
   Future<void> _loadCanvas(BuildContext context) async {
     final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
-    final result = await FilePicker.platform.pickFiles(
-      dialogTitle: 'Open canvas',
-      type: FileType.custom,
-      allowedExtensions: const ['mypt'],
-    );
+    final isMobile = Platform.isAndroid || Platform.isIOS;
+    if (isMobile && await ref.read(documentFileServiceProvider).isSupported()) {
+      try {
+        final document = await ref
+            .read(documentFileServiceProvider)
+            .openDocument();
+        if (document == null) {
+          return;
+        }
+
+        if (!_isMyptFile(document.displayName)) {
+          if (!context.mounted) {
+            return;
+          }
+
+          _showToast(context, 'Please select a .mypt file.');
+          return;
+        }
+
+        final bytes = document.bytes;
+        if (bytes == null) {
+          if (!context.mounted) {
+            return;
+          }
+
+          _showToast(context, 'Unable to read the selected file.');
+          return;
+        }
+
+        final failure = await drawingNotifier.loadFromBytes(bytes);
+        if (failure != null) {
+          if (!context.mounted) {
+            return;
+          }
+
+          _showToast(context, _loadFailureMessage(failure));
+          return;
+        }
+
+        drawingNotifier.setCurrentFilePath(
+          document.displayName,
+          currentDocumentUri: document.uri,
+        );
+        return;
+      } catch (_) {
+        if (!context.mounted) {
+          return;
+        }
+
+        _showToast(context, 'Unable to open the selected file.');
+        return;
+      }
+    }
+
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Open canvas',
+        type: isMobile ? FileType.any : FileType.custom,
+        allowedExtensions: isMobile ? null : const ['mypt'],
+        withData: isMobile,
+      );
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+
+      _showToast(context, 'Unable to open the selected file.');
+      return;
+    }
     if (result == null || result.files.isEmpty) {
       return;
     }
 
     final selected = result.files.first;
     final path = selected.path;
-    if (path == null || path.trim().isEmpty) {
+    final name = selected.name.trim();
+    final hasPath = path != null && path.trim().isNotEmpty;
+    final candidateName = hasPath ? path : name;
+    if (candidateName.trim().isEmpty) {
       if (!context.mounted) {
         return;
       }
@@ -292,7 +377,7 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
       return;
     }
 
-    if (!path.toLowerCase().endsWith('.mypt')) {
+    if (!_isMyptFile(candidateName)) {
       if (!context.mounted) {
         return;
       }
@@ -301,17 +386,29 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
       return;
     }
 
-    final file = File(path);
-    if (!await file.exists()) {
+    Uint8List? bytes = selected.bytes;
+    if (bytes == null && hasPath) {
+      final file = File(path);
+      if (!await file.exists()) {
+        if (!context.mounted) {
+          return;
+        }
+
+        _showToast(context, 'Selected file no longer exists.');
+        return;
+      }
+
+      bytes = await file.readAsBytes();
+    }
+
+    if (bytes == null) {
       if (!context.mounted) {
         return;
       }
 
-      _showToast(context, 'Selected file no longer exists.');
+      _showToast(context, 'Unable to read the selected file.');
       return;
     }
-
-    final bytes = await file.readAsBytes();
     if (!context.mounted) {
       return;
     }
@@ -329,62 +426,7 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
     drawingNotifier.setCurrentFilePath(path);
   }
 
-  Future<void> _saveCanvas(BuildContext context) async {
-    final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
-    final drawingState = ref.read(drawingBoardNotifierProvider);
-    final isFirstSave = await drawingNotifier.isUsingDraftPath();
-    if (!context.mounted) {
-      return;
-    }
-    var canvasTitle = drawingState.currentCanvasName;
-    if (isFirstSave) {
-      final inputTitle = await _promptForCanvasTitle(context, canvasTitle);
-      if (!context.mounted) {
-        return;
-      }
-      if (inputTitle == null) {
-        return;
-      }
-
-      final trimmedTitle = inputTitle.trim();
-      final resolvedTitle = trimmedTitle.isEmpty ? 'Untitled' : trimmedTitle;
-      drawingNotifier.updateCanvasTitle(resolvedTitle);
-      canvasTitle = resolvedTitle;
-    }
-
-    final fallbackName = canvasTitle.trim().isEmpty ? 'untitled' : canvasTitle;
-    final suggestedName = _ensureMyptExtension(
-      !isFirstSave && drawingState.currentFilePath?.isNotEmpty == true
-          ? _fileNameFromPath(drawingState.currentFilePath!)
-          : fallbackName,
-    );
-    final pickedPath = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save canvas',
-      fileName: suggestedName,
-      type: FileType.custom,
-      allowedExtensions: const ['mypt'],
-    );
-    if (pickedPath == null) {
-      return;
-    }
-
-    final targetPath = _ensureMyptExtension(pickedPath);
-
-    try {
-      final resolvedPath = await drawingNotifier.saveToFilePath(targetPath);
-      if (!context.mounted || resolvedPath == null) {
-        return;
-      }
-
-      _showToast(context, 'Saved to ${_fileNameFromPath(resolvedPath)}.');
-    } catch (_) {
-      if (!context.mounted) {
-        return;
-      }
-
-      _showToast(context, 'Save failed.');
-    }
-  }
+  bool _isMyptFile(String value) => value.toLowerCase().endsWith('.mypt');
 
   Future<void> _exportCanvas(BuildContext context) async {
     final drawingState = ref.read(drawingBoardNotifierProvider);
@@ -447,50 +489,6 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
 
   void _showToast(BuildContext context, String message) {
     showAppToast(context, message);
-  }
-
-  String _ensureMyptExtension(String path) {
-    final normalized = path.trim();
-    if (normalized.toLowerCase().endsWith('.mypt')) {
-      return normalized;
-    }
-    return '$normalized.mypt';
-  }
-
-  Future<String?> _promptForCanvasTitle(
-    BuildContext context,
-    String currentTitle,
-  ) async {
-    final controller = TextEditingController(text: currentTitle);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Canvas Title'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(
-              hintText: 'Enter a title for this canvas',
-            ),
-            onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-              child: const Text('Continue'),
-            ),
-          ],
-        );
-      },
-    );
-    controller.dispose();
-    return result;
   }
 
   String _fileNameFromPath(String path) {
