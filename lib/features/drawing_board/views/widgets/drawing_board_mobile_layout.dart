@@ -7,7 +7,6 @@ import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/tool_selection_notifier.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/canvas_title_field.dart';
-import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_board_tool_button.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/eraser_tool_icon.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/interactive_canvas.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/stroke_width_preview.dart';
@@ -71,7 +70,6 @@ class _MobileLayoutState extends ConsumerState<MobileLayout> {
               child: MobileTopBar(onCaptureImage: _captureImage),
             ),
             StrokeWidthPreviewOverlay(controller: _strokePreviewController),
-            const Positioned(right: 16, top: 120, child: MobileQuickActions()),
             AnimatedPositioned(
               duration: _animationDuration,
               curve: Curves.easeOutCubic,
@@ -207,33 +205,6 @@ class MobileCanvasArea extends StatelessWidget {
     return InteractiveCanvas(
       key: canvasKey,
       onViewportScaleChanged: onViewportScaleChanged,
-    );
-  }
-}
-
-class MobileQuickActions extends StatelessWidget {
-  const MobileQuickActions({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final AppColors colors = Theme.of(context).extension<AppColors>()!;
-    final Color background = colors.surfaceFloating;
-    final Color border = colors.borderSubtle;
-
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border),
-      ),
-      child: const Column(
-        children: <Widget>[
-          ToolButton(icon: Icons.layers, isActive: true),
-          SizedBox(height: 8),
-          ToolButton(icon: Icons.zoom_in),
-        ],
-      ),
     );
   }
 }

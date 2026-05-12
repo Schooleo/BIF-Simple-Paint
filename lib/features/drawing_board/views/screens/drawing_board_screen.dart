@@ -7,6 +7,7 @@ import 'package:bif_simple_paint/features/drawing_board/views/widgets/drawing_bo
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/interactive_canvas.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/stroke_width_preview.dart';
 import 'package:bif_simple_paint/features/drawing_board/views/widgets/tool_palette.dart';
+import 'package:bif_simple_paint/features/drawing_board/utils/canvas_exporter.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'dart:io';
 
@@ -387,45 +388,59 @@ class _CanvasAreaState extends ConsumerState<CanvasArea> {
 
   Future<void> _exportCanvas(BuildContext context) async {
     final drawingState = ref.read(drawingBoardNotifierProvider);
+
+    final background =
+        Theme.of(context).extension<AppColors>()?.backgroundCanvas ??
+        Colors.white;
+
+    final state = _canvasExportKey.currentState;
+    var bytes = await state?.captureImage(asJpeg: false);
+
+    bytes ??= await CanvasExporter.export(
+      drawingState.finalizedShapes,
+      canvasWidth: 4096,
+      canvasHeight: 4096,
+      backgroundColor: background,
+      asJpeg: false,
+    );
+
+    if (bytes == null) {
+      if (context.mounted) {
+        _showToast(context, 'Export failed to capture image.');
+      }
+      return;
+    }
+
     final baseName = drawingState.currentCanvasName.trim().isEmpty
         ? 'untitled'
         : drawingState.currentCanvasName;
     final suggestedName = _ensurePngExtension(baseName);
+
     final exportPath = await FilePicker.platform.saveFile(
       dialogTitle: 'Export canvas',
       fileName: suggestedName,
       type: FileType.custom,
       allowedExtensions: const ['png'],
     );
+
     if (exportPath == null) {
       return;
     }
 
     final resolvedPath = _ensurePngExtension(exportPath);
-    final state = _canvasExportKey.currentState;
-    final bytes = await state?.captureImage(asJpeg: false);
-    if (!context.mounted) {
-      return;
-    }
-
-    if (bytes == null) {
-      _showToast(context, 'Export failed.');
-      return;
-    }
 
     try {
       final file = File(resolvedPath);
       await file.writeAsBytes(bytes, flush: true);
+
       if (!context.mounted) {
         return;
       }
-
       _showToast(context, 'Exported ${_fileNameFromPath(resolvedPath)}.');
     } catch (_) {
       if (!context.mounted) {
         return;
       }
-
       _showToast(context, 'Export failed.');
     }
   }

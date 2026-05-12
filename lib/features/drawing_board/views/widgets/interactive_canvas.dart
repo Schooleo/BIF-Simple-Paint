@@ -208,6 +208,9 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
   }
 
   void _handleTapDown(TapDownDetails details) {
+    if (_isMiddleMousePanning) {
+      return;
+    }
     _focusNode.requestFocus();
     final toolSelection = ref.read(toolSelectionNotifierProvider);
     if (toolSelection.toolType != ToolType.cursor) {
@@ -243,6 +246,9 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
   }
 
   void _handleScaleStart(ScaleStartDetails details) {
+    if (_isMiddleMousePanning) {
+      return;
+    }
     _focusNode.requestFocus();
     final toolSelection = ref.read(toolSelectionNotifierProvider);
     final drawingBoardNotifier = ref.read(
@@ -275,6 +281,9 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
   }
 
   void _handleScaleUpdate(ScaleUpdateDetails details) {
+    if (_isMiddleMousePanning) {
+      return;
+    }
     final toolSelection = ref.read(toolSelectionNotifierProvider);
     final drawingBoardNotifier = ref.read(
       drawingBoardNotifierProvider.notifier,
@@ -370,6 +379,9 @@ class _InteractiveCanvasState extends ConsumerState<InteractiveCanvas>
   }
 
   void _handleScaleEnd(ScaleEndDetails details) {
+    if (_isMiddleMousePanning) {
+      return;
+    }
     final toolSelection = ref.read(toolSelectionNotifierProvider);
     final drawingBoardNotifier = ref.read(
       drawingBoardNotifierProvider.notifier,
