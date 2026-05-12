@@ -1,12 +1,19 @@
+import 'dart:io';
+
 import 'package:bif_simple_paint/core/routing/app_router.dart';
+import 'package:bif_simple_paint/core/utils/binary_serializer.dart';
 import 'package:bif_simple_paint/core/theme/app_colors.dart';
+import 'package:bif_simple_paint/core/widgets/app_toast.dart';
 import 'package:bif_simple_paint/features/canvas_list/models/canvas_metadata.dart';
 import 'package:bif_simple_paint/features/canvas_list/providers/canvas_list_notifier.dart';
 import 'package:bif_simple_paint/features/canvas_list/repositories/canvas_list_repository.dart';
 import 'package:bif_simple_paint/features/canvas_list/views/widgets/canvas_list_item.dart';
 import 'package:bif_simple_paint/features/drawing_board/providers/drawing_board_notifier.dart';
+import 'package:bif_simple_paint/features/drawing_board/utils/canvas_exporter.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gal/gal.dart';
 
 class CanvasListScreen extends ConsumerStatefulWidget {
   const CanvasListScreen({super.key});
@@ -16,6 +23,9 @@ class CanvasListScreen extends ConsumerStatefulWidget {
 }
 
 class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
+  bool _isCanvasLoading = false;
+  String _canvasLoadingLabel = 'Loading canvas...';
+
   @override
   void initState() {
     super.initState();
@@ -34,82 +44,139 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
     return Scaffold(
       backgroundColor: background,
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _createCanvas(context),
+        onPressed: _isCanvasLoading ? null : () => _createCanvas(context),
         tooltip: 'New canvas',
         child: const Icon(Icons.add),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Canvas List',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(color: titleColor),
-              ),
-              const SizedBox(height: 12),
-              const _CanvasSearchField(),
-              const SizedBox(height: 16),
-              Expanded(
-                child: Builder(
-                  builder: (context) {
-                    if (canvasState.isLoading && canvasState.canvases.isEmpty) {
-                      return const _CanvasListSkeleton();
-                    }
-
-                    final canvases = canvasState.filteredCanvases;
-                    if (canvases.isEmpty) {
-                      return const _EmptyCanvasState();
-                    }
-
-                    final viewDataList = canvases
-                        .map((metadata) => metadata.toListItemData())
-                        .toList(growable: false);
-
-                    return Stack(
-                      children: <Widget>[
-                        RefreshIndicator(
-                          onRefresh: () => ref
-                              .read(canvasListNotifierProvider.notifier)
-                              .loadCanvases(),
-                          child: ListView.separated(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            itemCount: canvases.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              final metadata = canvases[index];
-                              final viewData = viewDataList[index];
-                              return CanvasListItem(
-                                key: ValueKey(metadata.id),
-                                viewData: viewData,
-                                onTap: () => _openCanvas(context, metadata),
-                                onRename: () =>
-                                    _renameCanvas(context, metadata),
-                                onDelete: () =>
-                                    _deleteCanvas(context, metadata),
-                              );
-                            },
-                          ),
+      body: Stack(
+        children: <Widget>[
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          'Canvas List',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleMedium?.copyWith(color: titleColor),
                         ),
-                        if (canvasState.isLoading)
-                          const Positioned(
-                            left: 0,
-                            right: 0,
-                            top: 0,
-                            child: LinearProgressIndicator(),
-                          ),
-                      ],
-                    );
-                  },
+                      ),
+                      IconButton(
+                        onPressed: _isCanvasLoading
+                            ? null
+                            : () => _loadCanvasFromFile(context),
+                        tooltip: 'Load canvas',
+                        icon: const Icon(Icons.folder_open),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const _CanvasSearchField(),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Builder(
+                      builder: (context) {
+                        if (canvasState.isLoading &&
+                            canvasState.canvases.isEmpty) {
+                          return const _CanvasListSkeleton();
+                        }
+
+                        final canvases = canvasState.filteredCanvases;
+                        if (canvases.isEmpty) {
+                          return const _EmptyCanvasState();
+                        }
+
+                        final viewDataList = canvases
+                            .map((metadata) => metadata.toListItemData())
+                            .toList(growable: false);
+
+                        return Stack(
+                          children: <Widget>[
+                            RefreshIndicator(
+                              onRefresh: () => ref
+                                  .read(canvasListNotifierProvider.notifier)
+                                  .loadCanvases(),
+                              child: ListView.separated(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                itemCount: canvases.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: 12),
+                                itemBuilder: (context, index) {
+                                  final metadata = canvases[index];
+                                  final viewData = viewDataList[index];
+                                  return CanvasListItem(
+                                    key: ValueKey(metadata.id),
+                                    viewData: viewData,
+                                    onTap: _isCanvasLoading
+                                        ? null
+                                        : () => _openCanvas(context, metadata),
+                                    onRename: () =>
+                                        _renameCanvas(context, metadata),
+                                    onExport: _isCanvasLoading
+                                        ? null
+                                        : () =>
+                                              _exportCanvas(context, metadata),
+                                    onDelete: () =>
+                                        _deleteCanvas(context, metadata),
+                                  );
+                                },
+                              ),
+                            ),
+                            if (canvasState.isLoading)
+                              const Positioned(
+                                left: 0,
+                                right: 0,
+                                top: 0,
+                                child: LinearProgressIndicator(),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_isCanvasLoading) ...<Widget>[
+            const ModalBarrier(dismissible: false, color: Colors.black38),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 20,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surfaceFloating,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: colors.borderSubtle),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      _canvasLoadingLabel,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: titleColor),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -118,88 +185,277 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
     BuildContext context,
     CanvasMetadata metadata,
   ) async {
-    final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    final shouldNavigate = MediaQuery.sizeOf(context).width < 800;
-    final repository = ref.read(canvasListRepositoryProvider);
+    await _withCanvasLoading('Loading canvas...', () async {
+      final navigator = Navigator.of(context);
+      final shouldNavigate = MediaQuery.sizeOf(context).width < 800;
+      final repository = ref.read(canvasListRepositoryProvider);
 
-    try {
-      final exists = await repository.canvasFileExists(metadata.filePath);
-      if (!exists) {
-        if (!mounted) {
+      try {
+        final exists = await repository.canvasFileExists(metadata.filePath);
+        if (!exists) {
+          if (!context.mounted) {
+            return;
+          }
+
+          _showToast(context, '${metadata.name} file is missing.');
           return;
         }
 
-        messenger.showSnackBar(
-          SnackBar(content: Text('${metadata.name} file is missing.')),
-        );
-        return;
-      }
-
-      final bytes = await repository.loadCanvasBytes(metadata.filePath);
-      if (!mounted) {
-        return;
-      }
-
-      final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
-      final failure = await drawingNotifier.loadFromBytes(bytes);
-      if (failure != null) {
-        if (!mounted) {
+        final bytes = await repository.loadCanvasBytes(metadata.filePath);
+        if (!context.mounted) {
           return;
         }
 
-        messenger.showSnackBar(
-          SnackBar(content: Text(_loadFailureMessage(metadata.name, failure))),
+        final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
+        final failure = await drawingNotifier.loadFromBytes(bytes);
+        if (failure != null) {
+          if (!context.mounted) {
+            return;
+          }
+
+          _showToast(context, _loadFailureMessage(metadata.name, failure));
+          return;
+        }
+
+        drawingNotifier.setCurrentFilePath(
+          metadata.filePath,
+          canvasId: metadata.id,
+          canvasName: metadata.name,
         );
+
+        if (!context.mounted) {
+          return;
+        }
+
+        if (shouldNavigate) {
+          navigator.pushNamed(AppRouter.drawingBoardPath);
+        }
+      } catch (_) {
+        if (!context.mounted) {
+          return;
+        }
+
+        _showToast(context, 'Unable to open ${metadata.name}.');
+      }
+    });
+  }
+
+  Future<void> _createCanvas(BuildContext context) async {
+    await _withCanvasLoading('Creating canvas...', () async {
+      final navigator = Navigator.of(context);
+      final shouldNavigate = MediaQuery.sizeOf(context).width < 800;
+      final success = await ref
+          .read(drawingBoardNotifierProvider.notifier)
+          .createNewCanvas();
+
+      if (!context.mounted) {
         return;
       }
 
-      drawingNotifier.setCurrentFilePath(
-        metadata.filePath,
-        canvasId: metadata.id,
-        canvasName: metadata.name,
-      );
-
-      if (!mounted) {
+      if (!success) {
+        _showToast(context, 'Unable to create a new canvas.');
         return;
       }
 
       if (shouldNavigate) {
         navigator.pushNamed(AppRouter.drawingBoardPath);
       }
-    } catch (_) {
-      if (!mounted) {
+    });
+  }
+
+  Future<void> _loadCanvasFromFile(BuildContext context) async {
+    await _withCanvasLoading('Loading canvas...', () async {
+      final navigator = Navigator.of(context);
+      final shouldNavigate = MediaQuery.sizeOf(context).width < 800;
+      final drawingNotifier = ref.read(drawingBoardNotifierProvider.notifier);
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Open canvas',
+        type: FileType.custom,
+        allowedExtensions: const ['mypt'],
+      );
+      if (result == null || result.files.isEmpty) {
         return;
       }
 
-      messenger.showSnackBar(
-        SnackBar(content: Text('Unable to open ${metadata.name}.')),
-      );
-    }
+      final selected = result.files.first;
+      final path = selected.path;
+      if (path == null || path.trim().isEmpty) {
+        if (!context.mounted) {
+          return;
+        }
+
+        _showToast(context, 'Unable to open the selected file.');
+        return;
+      }
+
+      if (!path.toLowerCase().endsWith('.mypt')) {
+        if (!context.mounted) {
+          return;
+        }
+
+        _showToast(context, 'Please select a .mypt file.');
+        return;
+      }
+
+      final file = File(path);
+      if (!await file.exists()) {
+        if (!context.mounted) {
+          return;
+        }
+
+        _showToast(context, 'Selected file no longer exists.');
+        return;
+      }
+
+      final bytes = await file.readAsBytes();
+      if (!context.mounted) {
+        return;
+      }
+
+      final failure = await drawingNotifier.loadFromBytes(bytes);
+      if (failure != null) {
+        if (!context.mounted) {
+          return;
+        }
+
+        _showToast(
+          context,
+          _loadFailureMessage(_fileNameFromPath(path), failure),
+        );
+        return;
+      }
+
+      drawingNotifier.setCurrentFilePath(path);
+
+      if (!context.mounted) {
+        return;
+      }
+
+      if (shouldNavigate) {
+        navigator.pushNamed(AppRouter.drawingBoardPath);
+      }
+    });
   }
 
-  Future<void> _createCanvas(BuildContext context) async {
-    final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    final shouldNavigate = MediaQuery.sizeOf(context).width < 800;
-    final success = await ref
-        .read(drawingBoardNotifierProvider.notifier)
-        .createNewCanvas();
+  Future<void> _exportCanvas(
+    BuildContext context,
+    CanvasMetadata metadata,
+  ) async {
+    await _withCanvasLoading('Exporting canvas...', () async {
+      final repository = ref.read(canvasListRepositoryProvider);
+      final backgroundColor =
+          Theme.of(context).extension<AppColors>()?.backgroundCanvas ??
+          Colors.white;
 
+      try {
+        final exists = await repository.canvasFileExists(metadata.filePath);
+        if (!exists) {
+          if (!context.mounted) {
+            return;
+          }
+
+          _showToast(context, '${metadata.name} file is missing.');
+          return;
+        }
+
+        final canvasBytes = await repository.loadCanvasBytes(metadata.filePath);
+        final decoded = await decodeShapes(canvasBytes);
+        final pngBytes = await CanvasExporter.export(
+          decoded.shapes,
+          canvasWidth: decoded.canvasWidth,
+          canvasHeight: decoded.canvasHeight,
+          backgroundColor: backgroundColor,
+        );
+        if (!context.mounted) {
+          return;
+        }
+
+        if (pngBytes == null) {
+          _showToast(context, 'Export failed.');
+          return;
+        }
+
+        if (Platform.isAndroid || Platform.isIOS) {
+          await Gal.putImageBytes(pngBytes);
+          if (!context.mounted) {
+            return;
+          }
+
+          _showToast(context, 'Exported ${metadata.name} to gallery.');
+          return;
+        }
+
+        final targetPath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Export canvas',
+          fileName: _ensurePngExtension(metadata.name),
+          type: FileType.custom,
+          allowedExtensions: const ['png'],
+        );
+        if (targetPath == null) {
+          return;
+        }
+
+        final resolvedPath = _ensurePngExtension(targetPath);
+        final file = File(resolvedPath);
+        await file.writeAsBytes(pngBytes, flush: true);
+        if (!context.mounted) {
+          return;
+        }
+
+        _showToast(context, 'Exported ${_fileNameFromPath(resolvedPath)}.');
+      } catch (_) {
+        if (!context.mounted) {
+          return;
+        }
+
+        _showToast(context, 'Unable to export ${metadata.name}.');
+      }
+    });
+  }
+
+  Future<void> _withCanvasLoading(
+    String label,
+    Future<void> Function() action,
+  ) async {
     if (!mounted) {
       return;
     }
 
-    if (!success) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Unable to create a new canvas.')),
-      );
-      return;
-    }
+    setState(() {
+      _isCanvasLoading = true;
+      _canvasLoadingLabel = label;
+    });
 
-    if (shouldNavigate) {
-      navigator.pushNamed(AppRouter.drawingBoardPath);
+    try {
+      await action();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCanvasLoading = false;
+        });
+      }
     }
+  }
+
+  String _ensurePngExtension(String path) {
+    final normalized = path.trim();
+    if (normalized.toLowerCase().endsWith('.png')) {
+      return normalized;
+    }
+    return '$normalized.png';
+  }
+
+  String _fileNameFromPath(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final index = normalized.lastIndexOf('/');
+    if (index == -1 || index == normalized.length - 1) {
+      return normalized;
+    }
+    return normalized.substring(index + 1);
+  }
+
+  void _showToast(BuildContext context, String message) {
+    showAppToast(context, message);
   }
 
   String _loadFailureMessage(String canvasName, CanvasLoadFailure failure) {
@@ -223,22 +479,17 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
     }
 
     if (!success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to remove ${metadata.name}.')),
-      );
+      _showToast(context, 'Unable to remove ${metadata.name}.');
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${metadata.name} removed from recent projects.')),
-    );
+    _showToast(context, '${metadata.name} removed from recent projects.');
   }
 
   Future<void> _renameCanvas(
     BuildContext context,
     CanvasMetadata metadata,
   ) async {
-    final messenger = ScaffoldMessenger.of(context);
     var draftName = metadata.name;
     final newName = await showDialog<String>(
       context: context,
@@ -253,8 +504,7 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
             onChanged: (value) {
               draftName = value;
             },
-            onFieldSubmitted: (value) =>
-                Navigator.of(dialogContext).pop(value),
+            onFieldSubmitted: (value) => Navigator.of(dialogContext).pop(value),
           ),
           actions: <Widget>[
             TextButton(
@@ -262,8 +512,7 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () =>
-                  Navigator.of(dialogContext).pop(draftName),
+              onPressed: () => Navigator.of(dialogContext).pop(draftName),
               child: const Text('Save'),
             ),
           ],
@@ -285,23 +534,20 @@ class _CanvasListScreenState extends ConsumerState<CanvasListScreen> {
     }
 
     if (!success) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Unable to rename ${metadata.name}.')),
-      );
+      _showToast(context, 'Unable to rename ${metadata.name}.');
       return;
     }
 
-    final activeCanvasId =
-      ref.read(drawingBoardNotifierProvider).currentCanvasId;
+    final activeCanvasId = ref
+        .read(drawingBoardNotifierProvider)
+        .currentCanvasId;
     if (activeCanvasId == metadata.id) {
       ref
           .read(drawingBoardNotifierProvider.notifier)
           .updateCanvasTitle(resolvedName);
     }
 
-    messenger.showSnackBar(
-      SnackBar(content: Text('Renamed to $resolvedName.')),
-    );
+    _showToast(context, 'Renamed to $resolvedName.');
   }
 }
 

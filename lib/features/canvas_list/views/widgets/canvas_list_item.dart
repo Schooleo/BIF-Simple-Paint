@@ -1,7 +1,7 @@
 import 'package:bif_simple_paint/features/canvas_list/models/canvas_metadata.dart';
 import 'package:flutter/material.dart';
 
-enum _CanvasListAction { rename, delete }
+enum _CanvasListAction { rename, export, delete }
 
 class CanvasListItem extends StatelessWidget {
   const CanvasListItem({
@@ -9,12 +9,14 @@ class CanvasListItem extends StatelessWidget {
     required this.viewData,
     this.onTap,
     this.onRename,
+    this.onExport,
     this.onDelete,
   });
 
   final CanvasListItemData viewData;
   final VoidCallback? onTap;
   final VoidCallback? onRename;
+  final VoidCallback? onExport;
   final VoidCallback? onDelete;
 
   @override
@@ -87,7 +89,9 @@ class CanvasListItem extends StatelessWidget {
                   ],
                 ),
               ),
-              if (onRename != null || onDelete != null) ...<Widget>[
+              if (onRename != null ||
+                  onExport != null ||
+                  onDelete != null) ...<Widget>[
                 const SizedBox(width: 8),
                 PopupMenuButton<_CanvasListAction>(
                   tooltip: 'Canvas actions',
@@ -95,6 +99,9 @@ class CanvasListItem extends StatelessWidget {
                     switch (action) {
                       case _CanvasListAction.rename:
                         onRename?.call();
+                        break;
+                      case _CanvasListAction.export:
+                        onExport?.call();
                         break;
                       case _CanvasListAction.delete:
                         onDelete?.call();
@@ -107,6 +114,11 @@ class CanvasListItem extends StatelessWidget {
                         const PopupMenuItem<_CanvasListAction>(
                           value: _CanvasListAction.rename,
                           child: Text('Rename'),
+                        ),
+                      if (onExport != null)
+                        const PopupMenuItem<_CanvasListAction>(
+                          value: _CanvasListAction.export,
+                          child: Text('Export'),
                         ),
                       if (onDelete != null)
                         const PopupMenuItem<_CanvasListAction>(
