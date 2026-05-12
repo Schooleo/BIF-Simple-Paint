@@ -76,6 +76,7 @@ BIF Simple Paint is a cross-platform Flutter drawing app for **Android**, **Linu
 - `Ctrl + Z` — Undo
 - `Ctrl + Y` — Redo
 - `Ctrl + Shift + Z` — Redo
+- `Ctrl + S` — Save canvas
 - `Ctrl + E` — Export
 - `Ctrl + O` — Load canvas
 
@@ -105,6 +106,7 @@ Saved canvases keep thumbnails and metadata for quick browsing.
 ## 📤 Export Behavior
 
 - Export supports **PNG** and **JPEG** from the drawing board
+- Manual save keeps the working canvas in a chosen `.mypt` file
 - Mobile export saves to the gallery
 - Desktop export saves to a chosen file path
 - Exported images are rendered as **square images** with:
