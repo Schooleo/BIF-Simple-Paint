@@ -232,6 +232,22 @@ void main() {
       expect(state.selectedShapeId, committedShape.id);
     });
 
+    test('commitDrawing does not select eraser strokes', () {
+      notifier.startDrawing(
+        const Offset(3, 3),
+        selection(toolType: ToolType.eraser),
+      );
+      notifier.updateDrawing(const Offset(6, 6));
+
+      notifier.commitDrawing();
+
+      final state = container.read(drawingBoardNotifierProvider);
+
+      expect(state.finalizedShapes.single, isA<EraserShape>());
+      expect(state.selectedShapeId, isNull);
+      expect(state.selectedShape, isNull);
+    });
+
     test('selectShape picks the committed shape by id', () {
       notifier.startDrawing(const Offset(1, 1), selection());
       notifier.commitDrawing();
@@ -288,6 +304,38 @@ void main() {
       expect(after.undoStack.length, before.undoStack.length);
       expect(after.redoStack, before.redoStack);
     });
+
+    test(
+      'style updates during a transform are grouped into one undo action',
+      () {
+        notifier.startDrawing(const Offset(1, 1), selection());
+        notifier.commitDrawing();
+        final shapeId = container
+            .read(drawingBoardNotifierProvider)
+            .finalizedShapes
+            .single
+            .id;
+        notifier.selectShape(shapeId);
+
+        final before = container.read(drawingBoardNotifierProvider);
+        notifier.beginTransform();
+        notifier.updateSelectedShapeStyle(strokeWidth: 4);
+        notifier.updateSelectedShapeStyle(strokeWidth: 6);
+        notifier.updateSelectedShapeStyle(strokeWidth: 8);
+
+        var during = container.read(drawingBoardNotifierProvider);
+        expect((during.finalizedShapes.single as BrushShape).strokeWidth, 8);
+        expect(during.undoStack.length, before.undoStack.length);
+
+        notifier.endTransform();
+
+        final after = container.read(drawingBoardNotifierProvider);
+        expect((after.finalizedShapes.single as BrushShape).strokeWidth, 8);
+        expect(after.undoStack.length, before.undoStack.length + 1);
+        expect((after.undoStack.last.single as BrushShape).strokeWidth, 2);
+        expect(after.redoStack, isEmpty);
+      },
+    );
 
     test(
       'updateSelectedShapeStyle commits a detached snapshot for undo history',

@@ -1,9 +1,33 @@
 import 'dart:ui';
 
+import 'package:image/image.dart' as img;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bif_simple_paint/core/utils/thumbnail_generator.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/shape/shapes.dart';
+
+bool _containsColor(
+  img.Image image,
+  Color color, {
+  int tolerance = 8,
+  int minMatches = 1,
+}) {
+  var matches = 0;
+
+  for (final pixel in image) {
+    if ((pixel.r - color.r * 255).abs() <= tolerance &&
+        (pixel.g - color.g * 255).abs() <= tolerance &&
+        (pixel.b - color.b * 255).abs() <= tolerance &&
+        (pixel.a - color.a * 255).abs() <= tolerance) {
+      matches += 1;
+      if (matches >= minMatches) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
 
 void main() {
   // Required to allow dart:ui Canvas operations in a test environment
@@ -101,6 +125,43 @@ void main() {
         ),
         throwsA(isA<FormatException>()),
         reason: 'Padding quá lớn phải bị từ chối sớm',
+      );
+    });
+
+    test('renders text shape fill and stroke into the thumbnail output', () async {
+      const fillColor = Color(0xFFFFEB3B);
+      const strokeColor = Color(0xFF1565C0);
+      final thumbnailBytes = await ThumbnailGenerator.generate(
+        const <BaseShape>[
+          TextShape(
+            id: 'text_render',
+            startPoint: Offset(20, 20),
+            endPoint: Offset(180, 180),
+            text: 'T',
+            fontSize: 96,
+            fillColor: fillColor,
+            strokeColor: strokeColor,
+            strokeWidth: 4,
+          ),
+        ],
+        targetWidth: 200,
+        targetHeight: 200,
+        padding: 0,
+      );
+
+      expect(thumbnailBytes, isNotNull);
+      final image = img.decodePng(thumbnailBytes!);
+
+      expect(image, isNotNull);
+      expect(
+        _containsColor(image!, fillColor, minMatches: 500),
+        isTrue,
+        reason: 'Text thumbnails should keep the text box fill color',
+      );
+      expect(
+        _containsColor(image, strokeColor, minMatches: 100),
+        isTrue,
+        reason: 'Text thumbnails should render the text box border/text color',
       );
     });
   });

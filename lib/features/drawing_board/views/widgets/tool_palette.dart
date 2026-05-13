@@ -460,10 +460,30 @@ class ToolPaletteState extends ConsumerState<ToolPalette> {
 
   void _handleStrokePreviewStart(double value) {
     widget.onStrokePreviewChanged?.call(value);
+    if (!mounted) {
+      return;
+    }
+
+    final toolSelection = ref.read(toolSelectionNotifierProvider);
+    final drawingState = ref.read(drawingBoardNotifierProvider);
+    if (toolSelection.toolType == ToolType.cursor &&
+        drawingState.selectedShape != null) {
+      ref.read(drawingBoardNotifierProvider.notifier).beginTransform();
+    }
   }
 
   void _handleStrokePreviewEnd(double value) {
     widget.onStrokePreviewChanged?.call(null);
+    if (!mounted) {
+      return;
+    }
+
+    final toolSelection = ref.read(toolSelectionNotifierProvider);
+    final drawingState = ref.read(drawingBoardNotifierProvider);
+    if (toolSelection.toolType == ToolType.cursor &&
+        drawingState.selectedShape != null) {
+      ref.read(drawingBoardNotifierProvider.notifier).endTransform();
+    }
   }
 
   void _selectShapeIndex(int index) {
