@@ -8,8 +8,15 @@ abstract final class AppRouter {
   static const String drawingBoardPath = '/drawing-board';
 
   static Map<String, WidgetBuilder> get routes => <String, WidgetBuilder>{
-    canvasListPath: (_) => const ResponsiveSplitView(child: CanvasListScreen()),
-    drawingBoardPath: (_) =>
-        const ResponsiveSplitView(child: DrawingBoardScreen()),
+    canvasListPath: (_) => const ResponsiveSplitView(
+      mobile: CanvasListScreen(),
+      sidebar: CanvasListScreen(),
+      content: DrawingBoardScreen(),
+    ),
+    drawingBoardPath: (_) => const ResponsiveSplitView(
+      mobile: DrawingBoardScreen(),
+      sidebar: CanvasListScreen(),
+      content: DrawingBoardScreen(),
+    ),
   };
 }

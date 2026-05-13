@@ -1,21 +1,422 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 final databaseServiceProvider = Provider<DatabaseService>(
-  (ref) => const DatabaseService(),
+  (ref) => DatabaseService(),
 );
 
 class DatabaseService {
-  const DatabaseService();
+  DatabaseService({Directory? storageRootDirectory})
+    : _storageRootDirectory = storageRootDirectory;
+
+  final Directory? _storageRootDirectory;
+  Directory? _cachedStorageDirectory;
+
+  static const String idKey = 'id';
+  static const String nameKey = 'name';
+  static const String filePathKey = 'filePath';
+  static const String documentUriKey = 'documentUri';
+  static const String lastEditedTimeKey = 'lastEditedTime';
+  static const String thumbnailDataKey = 'thumbnailData';
 
   Future<List<Map<String, Object?>>> fetchCanvasMetadata() async {
-    throw UnimplementedError();
+    final entries = await _readMetadataEntries();
+    entries.sort(_sortByLastEditedDescending);
+
+    return entries
+        .map((entry) => Map<String, Object?>.unmodifiable(entry))
+        .toList(growable: false);
   }
 
   Future<void> insertCanvasMetadata(Map<String, Object?> values) async {
-    throw UnimplementedError();
+    final normalized = _normalizeMetadata(values);
+    final entries = await _readMetadataEntries();
+    _upsertEntry(entries, normalized);
+    await _writeMetadataEntries(entries);
+  }
+
+  Future<void> updateCanvasName({
+    required String canvasId,
+    required String name,
+  }) async {
+    try {
+      final entries = await _readMetadataEntries();
+      final index = entries.indexWhere((entry) => entry[idKey] == canvasId);
+      if (index == -1) {
+        return;
+      }
+
+      final existing = Map<String, Object?>.from(entries[index]);
+      existing[nameKey] = name;
+      existing[lastEditedTimeKey] = DateTime.now().toIso8601String();
+
+      entries[index] = _normalizeMetadata(existing);
+      await _writeMetadataEntries(entries);
+    } catch (_) {
+      rethrow;
+    }
   }
 
   Future<void> deleteCanvasMetadata(String canvasId) async {
-    throw UnimplementedError();
+    final entries = await _readMetadataEntries();
+    Map<String, Object?>? deletedEntry;
+
+    entries.removeWhere((entry) {
+      final matches = entry[idKey] == canvasId;
+      if (matches) {
+        deletedEntry = entry;
+      }
+      return matches;
+    });
+
+    await _writeMetadataEntries(entries);
+
+    final deletedFilePath = deletedEntry?[filePathKey] as String?;
+    final managedDraftsPath = (await _draftsDirectory()).path;
+    if (deletedFilePath != null &&
+        deletedFilePath.isNotEmpty &&
+        deletedFilePath.startsWith(managedDraftsPath)) {
+      final file = File(deletedFilePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
+
+    final draftPath = await resolveDraftFilePath(canvasId);
+    if (_normalizePathForComparison(deletedFilePath) ==
+        _normalizePathForComparison(draftPath)) {
+      return;
+    }
+
+    final draftFile = File(draftPath);
+    if (await draftFile.exists()) {
+      await draftFile.delete();
+    }
+  }
+
+  Future<String> resolveDraftFilePath(String canvasId) async {
+    final draftsDirectory = await _draftsDirectory();
+    return '${draftsDirectory.path}${Platform.pathSeparator}$canvasId.mypt';
+  }
+
+  Future<String> writeDraftCopy({
+    required String canvasId,
+    required Uint8List canvasBytes,
+    bool synchronous = false,
+  }) async {
+    final draftPath = await resolveDraftFilePath(canvasId);
+    if (synchronous) {
+      _writeCanvasBytesSync(draftPath, canvasBytes);
+    } else {
+      await _writeCanvasBytes(draftPath, canvasBytes);
+    }
+    return draftPath;
+  }
+
+  Future<String> persistCanvas({
+    required String canvasId,
+    required String name,
+    String? filePath,
+    String? documentUri,
+    required Uint8List canvasBytes,
+    Uint8List? thumbnailData,
+    DateTime? lastEditedTime,
+    bool synchronous = false,
+  }) async {
+    final resolvedFilePath = filePath ?? await resolveDraftFilePath(canvasId);
+    final metadata = _normalizeMetadata(<String, Object?>{
+      idKey: canvasId,
+      nameKey: name,
+      filePathKey: resolvedFilePath,
+      documentUriKey: documentUri,
+      lastEditedTimeKey: (lastEditedTime ?? DateTime.now()).toIso8601String(),
+      thumbnailDataKey: thumbnailData,
+    });
+
+    if (synchronous) {
+      _writeCanvasBytesSync(resolvedFilePath, canvasBytes);
+      _upsertMetadataSync(metadata);
+      return resolvedFilePath;
+    }
+
+    await _writeCanvasBytes(resolvedFilePath, canvasBytes);
+    await insertCanvasMetadata(metadata);
+    return resolvedFilePath;
+  }
+
+  Future<Uint8List> readCanvasBytes(String filePath) async {
+    return File(filePath).readAsBytes();
+  }
+
+  Future<bool> canvasFileExists(String filePath) async {
+    if (filePath.trim().isEmpty) {
+      return false;
+    }
+
+    return File(filePath).exists();
+  }
+
+  String _normalizePathForComparison(String? path) =>
+      (path ?? '').replaceAll('\\', '/').trim();
+
+  Future<List<Map<String, Object?>>> _readMetadataEntries() async {
+    final file = await _metadataFile();
+    if (!await file.exists()) {
+      return <Map<String, Object?>>[];
+    }
+
+    final raw = await file.readAsString();
+    if (raw.trim().isEmpty) {
+      return <Map<String, Object?>>[];
+    }
+
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      return <Map<String, Object?>>[];
+    }
+
+    return decoded
+        .whereType<Map>()
+        .map(
+          (entry) => _normalizeMetadata(
+            entry.map(
+              (key, value) => MapEntry(key.toString(), value as Object?),
+            ),
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> _writeMetadataEntries(List<Map<String, Object?>> entries) async {
+    final file = await _metadataFile();
+    entries.sort(_sortByLastEditedDescending);
+    await file.writeAsString(jsonEncode(entries), flush: true);
+  }
+
+  void _upsertMetadataSync(Map<String, Object?> entry) {
+    final file = _metadataFileSync();
+    final entries = _readMetadataEntriesSync(file);
+    _upsertEntry(entries, entry);
+    entries.sort(_sortByLastEditedDescending);
+    file.writeAsStringSync(jsonEncode(entries), flush: true);
+  }
+
+  List<Map<String, Object?>> _readMetadataEntriesSync(File file) {
+    if (!file.existsSync()) {
+      return <Map<String, Object?>>[];
+    }
+
+    final raw = file.readAsStringSync();
+    if (raw.trim().isEmpty) {
+      return <Map<String, Object?>>[];
+    }
+
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      return <Map<String, Object?>>[];
+    }
+
+    return decoded
+        .whereType<Map>()
+        .map(
+          (entry) => _normalizeMetadata(
+            entry.map(
+              (key, value) => MapEntry(key.toString(), value as Object?),
+            ),
+          ),
+        )
+        .toList();
+  }
+
+  void _upsertEntry(
+    List<Map<String, Object?>> entries,
+    Map<String, Object?> normalized,
+  ) {
+    final normalizedFilePath = _stringValue(normalized[filePathKey]).trim();
+    if (normalizedFilePath.isNotEmpty) {
+      entries.removeWhere(
+        (entry) =>
+            entry[filePathKey] == normalizedFilePath &&
+            entry[idKey] != normalized[idKey],
+      );
+    }
+
+    final index = entries.indexWhere(
+      (entry) => entry[idKey] == normalized[idKey],
+    );
+    if (index == -1) {
+      entries.add(normalized);
+      return;
+    }
+
+    entries[index] = normalized;
+  }
+
+  Map<String, Object?> _normalizeMetadata(Map<String, Object?> values) {
+    final id = _stringValue(values[idKey]).trim();
+    if (id.isEmpty) {
+      throw ArgumentError.value(values[idKey], idKey, 'Canvas id is required.');
+    }
+
+    final primaryName = _stringValue(values[nameKey]).trim();
+    final legacyTitle = _stringValue(values['title']).trim();
+    final name = primaryName.isEmpty ? legacyTitle : primaryName;
+    final filePath = _stringValue(values[filePathKey]);
+    final documentUri = _stringValue(values[documentUriKey]).trim();
+    final lastEditedTime = _normalizeTimestamp(values[lastEditedTimeKey]);
+    final thumbnailData = _normalizeThumbnail(values[thumbnailDataKey]);
+
+    return <String, Object?>{
+      idKey: id,
+      nameKey: name.isEmpty ? 'Untitled' : name,
+      filePathKey: filePath,
+      documentUriKey: documentUri,
+      lastEditedTimeKey: lastEditedTime,
+      thumbnailDataKey: thumbnailData,
+    };
+  }
+
+  String _normalizeTimestamp(Object? value) {
+    if (value is DateTime) {
+      return value.toIso8601String();
+    }
+
+    final text = _stringValue(value);
+    if (text.isEmpty) {
+      return DateTime.now().toIso8601String();
+    }
+
+    return DateTime.tryParse(text)?.toIso8601String() ??
+        DateTime.now().toIso8601String();
+  }
+
+  String _normalizeThumbnail(Object? value) {
+    if (value is Uint8List) {
+      return base64Encode(value);
+    }
+
+    if (value is List<int>) {
+      return base64Encode(Uint8List.fromList(value));
+    }
+
+    return _stringValue(value);
+  }
+
+  String _stringValue(Object? value) =>
+      value is String ? value : value?.toString() ?? '';
+
+  int _sortByLastEditedDescending(
+    Map<String, Object?> left,
+    Map<String, Object?> right,
+  ) {
+    final leftTime =
+        DateTime.tryParse(_stringValue(left[lastEditedTimeKey])) ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+    final rightTime =
+        DateTime.tryParse(_stringValue(right[lastEditedTimeKey])) ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+    return rightTime.compareTo(leftTime);
+  }
+
+  Future<void> _writeCanvasBytes(String filePath, Uint8List bytes) async {
+    final file = File(filePath);
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes, flush: true);
+  }
+
+  void _writeCanvasBytesSync(String filePath, Uint8List bytes) {
+    final file = File(filePath);
+    file.parent.createSync(recursive: true);
+    file.writeAsBytesSync(bytes, flush: true);
+  }
+
+  Future<File> _metadataFile() async {
+    final directory = await _storageDirectory();
+    return File(
+      '${directory.path}${Platform.pathSeparator}project_history.json',
+    );
+  }
+
+  File _metadataFileSync() {
+    final directory = _storageDirectorySync();
+    if (!directory.existsSync()) {
+      directory.createSync(recursive: true);
+    }
+    return File(
+      '${directory.path}${Platform.pathSeparator}project_history.json',
+    );
+  }
+
+  Future<Directory> _draftsDirectory() async {
+    final directory = await _storageDirectory();
+    final drafts = Directory(
+      '${directory.path}${Platform.pathSeparator}drafts',
+    );
+    if (!await drafts.exists()) {
+      await drafts.create(recursive: true);
+    }
+    return drafts;
+  }
+
+  Future<Directory> _storageDirectory() async {
+    final directory = await _resolveStorageDirectory();
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+    }
+    return directory;
+  }
+
+  Directory _storageDirectorySync() {
+    final configuredDirectory = _storageRootDirectory;
+    if (configuredDirectory != null) {
+      return configuredDirectory;
+    }
+
+    final cachedDirectory = _cachedStorageDirectory;
+    if (cachedDirectory != null) {
+      return cachedDirectory;
+    }
+
+    final basePath = Platform.environment['HOME']?.trim().isNotEmpty == true
+        ? Platform.environment['HOME']!.trim()
+        : Directory.current.path;
+    final separator = Platform.pathSeparator;
+    final directory = Directory('$basePath$separator.bif_simple_paint');
+    _cachedStorageDirectory = directory;
+    return directory;
+  }
+
+  Future<Directory> _resolveStorageDirectory() async {
+    final configuredDirectory = _storageRootDirectory;
+    if (configuredDirectory != null) {
+      _cachedStorageDirectory = configuredDirectory;
+      return configuredDirectory;
+    }
+
+    final cachedDirectory = _cachedStorageDirectory;
+    if (cachedDirectory != null) {
+      return cachedDirectory;
+    }
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      final documents = await getApplicationDocumentsDirectory();
+      final directory = Directory(
+        '${documents.path}${Platform.pathSeparator}.bif_simple_paint',
+      );
+      _cachedStorageDirectory = directory;
+      return directory;
+    }
+
+    final basePath = Platform.environment['HOME']?.trim().isNotEmpty == true
+        ? Platform.environment['HOME']!.trim()
+        : Directory.current.path;
+    final separator = Platform.pathSeparator;
+    final directory = Directory('$basePath$separator.bif_simple_paint');
+    _cachedStorageDirectory = directory;
+    return directory;
   }
 }

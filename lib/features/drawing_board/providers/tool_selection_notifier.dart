@@ -1,4 +1,6 @@
+import 'package:bif_simple_paint/core/theme/app_colors.dart';
 import 'package:bif_simple_paint/features/drawing_board/models/tool_type.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final toolSelectionNotifierProvider =
@@ -6,14 +8,61 @@ final toolSelectionNotifierProvider =
       ToolSelectionNotifier.new,
     );
 
+const double kMinStrokeWidth = 1.0;
+const double kMaxStrokeWidth = 30.0;
+const double kMaxEraserStrokeWidth = 60.0;
+const double kStrokeWidthStep = 0.5;
+
+double maxStrokeWidthForTool(ToolType toolType) {
+  return toolType == ToolType.eraser ? kMaxEraserStrokeWidth : kMaxStrokeWidth;
+}
+
+double strokeWidthForTool(ToolSelectionState state, ToolType toolType) {
+  return toolType == ToolType.eraser
+      ? state.currentEraserWidth
+      : state.currentStrokeWidth;
+}
+
+double _clampStrokeWidth(double strokeWidth, ToolType toolType) {
+  return strokeWidth
+      .clamp(kMinStrokeWidth, maxStrokeWidthForTool(toolType))
+      .toDouble();
+}
+
 class ToolSelectionState {
   const ToolSelectionState({
     this.toolType = ToolType.brush,
-    this.brushSize = 1,
+    this.shapeType = ShapeType.rectangle,
+    this.currentFillColor = AppColors.drawingFillTransparent,
+    this.currentStrokeColor = AppColors.drawingStrokeDefault,
+    this.currentStrokeWidth = 2,
+    this.currentEraserWidth = 2,
   });
 
   final ToolType toolType;
-  final double brushSize;
+  final ShapeType shapeType;
+  final Color currentFillColor;
+  final Color currentStrokeColor;
+  final double currentStrokeWidth;
+  final double currentEraserWidth;
+
+  ToolSelectionState copyWith({
+    ToolType? toolType,
+    ShapeType? shapeType,
+    Color? currentFillColor,
+    Color? currentStrokeColor,
+    double? currentStrokeWidth,
+    double? currentEraserWidth,
+  }) {
+    return ToolSelectionState(
+      toolType: toolType ?? this.toolType,
+      shapeType: shapeType ?? this.shapeType,
+      currentFillColor: currentFillColor ?? this.currentFillColor,
+      currentStrokeColor: currentStrokeColor ?? this.currentStrokeColor,
+      currentStrokeWidth: currentStrokeWidth ?? this.currentStrokeWidth,
+      currentEraserWidth: currentEraserWidth ?? this.currentEraserWidth,
+    );
+  }
 }
 
 class ToolSelectionNotifier extends Notifier<ToolSelectionState> {
@@ -21,10 +70,46 @@ class ToolSelectionNotifier extends Notifier<ToolSelectionState> {
   ToolSelectionState build() => const ToolSelectionState();
 
   void selectTool(ToolType toolType) {
-    throw UnimplementedError();
+    final double clampedWidth = _clampStrokeWidth(
+      strokeWidthForTool(state, toolType),
+      toolType,
+    );
+    state = state.copyWith(
+      toolType: toolType,
+      currentStrokeWidth: toolType == ToolType.eraser
+          ? state.currentStrokeWidth
+          : clampedWidth,
+      currentEraserWidth: toolType == ToolType.eraser
+          ? clampedWidth
+          : state.currentEraserWidth,
+    );
   }
 
-  void updateBrushSize(double brushSize) {
-    throw UnimplementedError();
+  void selectShapeType(ShapeType shapeType) {
+    state = state.copyWith(shapeType: shapeType);
+  }
+
+  void updateFillColor(Color fillColor) {
+    state = state.copyWith(currentFillColor: fillColor);
+  }
+
+  void updateStrokeColor(Color strokeColor) {
+    state = state.copyWith(currentStrokeColor: strokeColor);
+  }
+
+  void updateStrokeWidth(double strokeWidth) {
+    updateStrokeWidthForTool(state.toolType, strokeWidth);
+  }
+
+  void updateStrokeWidthForTool(ToolType toolType, double strokeWidth) {
+    final double clampedWidth = _clampStrokeWidth(strokeWidth, toolType);
+    state = state.copyWith(
+      currentStrokeWidth: toolType == ToolType.eraser
+          ? state.currentStrokeWidth
+          : clampedWidth,
+      currentEraserWidth: toolType == ToolType.eraser
+          ? clampedWidth
+          : state.currentEraserWidth,
+    );
   }
 }
