@@ -121,14 +121,44 @@ abstract final class CanvasExporter {
     }
 
     if (shape is TextShape) {
-      final builder =
-          ui.ParagraphBuilder(ui.ParagraphStyle(fontSize: shape.fontSize))
-            ..pushStyle(ui.TextStyle(color: shape.strokeColor))
-            ..addText(shape.text);
-      final paragraph = builder.build();
-      paragraph.layout(const ui.ParagraphConstraints(width: double.infinity));
-      canvas.drawParagraph(paragraph, shape.startPoint);
-      return;
+      // Draw background rect (fill) and stroke similar to the on-canvas
+      // painter, then render text centered inside the rect.
+      final rect = ui.Rect.fromPoints(shape.startPoint, shape.endPoint);
+
+      // Draw Fill if present
+      if (shape.fillColor != null && shape.fillColor!.a != 0) {
+        paint.style = ui.PaintingStyle.fill;
+        paint.color = shape.fillColor!;
+        canvas.drawRect(rect, paint);
+      }
+
+      // Draw Stroke border
+      paint.style = ui.PaintingStyle.stroke;
+      paint.color = shape.strokeColor;
+      canvas.drawRect(rect, paint);
+
+      // Render text centered within bounds using Paragraph
+      if (shape.text.isNotEmpty) {
+        final builder = ui.ParagraphBuilder(
+          ui.ParagraphStyle(
+            fontSize: shape.fontSize,
+            textAlign: ui.TextAlign.center,
+          ),
+        )
+          ..pushStyle(ui.TextStyle(color: shape.strokeColor))
+          ..addText(shape.text);
+        final paragraph = builder.build();
+        final width = rect.width.abs().clamp(1.0, double.infinity);
+        paragraph.layout(ui.ParagraphConstraints(width: width));
+        final offset = ui.Offset(
+          rect.left,
+          rect.top + (rect.height - paragraph.height) / 2,
+        );
+        canvas.save();
+        canvas.clipRect(rect);
+        canvas.drawParagraph(paragraph, offset);
+        canvas.restore();
+      }
     }
 
     if (shape is! TwoPointShape) {
