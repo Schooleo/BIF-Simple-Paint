@@ -1103,6 +1103,10 @@ class CanvasPainter extends CustomPainter {
   }
 
   void _drawSelection(Canvas canvas, BaseShape shape) {
+    if (shape is EraserShape) {
+      return;
+    }
+
     final scale = viewportScale <= 0 ? 1.0 : viewportScale;
     final bounds = _selectionBoundsFor(shape, viewportScale: scale);
     if (bounds.isEmpty) {

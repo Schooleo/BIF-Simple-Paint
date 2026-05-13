@@ -145,7 +145,7 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
     _commitState(
       finalizedShapes: <BaseShape>[...state.finalizedShapes, committedShape],
       activeTempShape: null,
-      selectedShapeId: committedShape.id,
+      selectedShapeId: committedShape is EraserShape ? null : committedShape.id,
     );
   }
 
@@ -406,6 +406,18 @@ class DrawingBoardNotifier extends _$DrawingBoardNotifier
         .toList(growable: false);
 
     if (!hasChanges) {
+      return;
+    }
+
+    if (_transformSnapshot != null) {
+      state = state.copyWith(
+        finalizedShapes: updatedShapes,
+        activeTempShape: null,
+        selectedShapeId: _selectedShapeIdFor(
+          updatedShapes,
+          preferredId: selectedShapeId,
+        ),
+      );
       return;
     }
 

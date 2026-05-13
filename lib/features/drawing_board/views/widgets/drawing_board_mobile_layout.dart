@@ -360,9 +360,17 @@ class _MobileFloatingToolbarsState
                             divisions: strokeDivisions,
                             onChangeStart: (double value) {
                               widget.strokePreviewController.show(value);
+                              if (isCursor &&
+                                  drawingState.selectedShape != null) {
+                                drawingBoardNotifier.beginTransform();
+                              }
                             },
                             onChangeEnd: (_) {
                               widget.strokePreviewController.hide();
+                              if (isCursor &&
+                                  drawingState.selectedShape != null) {
+                                drawingBoardNotifier.endTransform();
+                              }
                             },
                             onChanged: (double value) {
                               toolSelectionNotifier.updateStrokeWidthForTool(
